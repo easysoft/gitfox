@@ -1,6 +1,24 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import React, { useEffect, useState } from 'react'
+import * as monaco from 'monaco-editor'
 import type monacoEditor from 'monaco-editor/esm/vs/editor/editor.api'
 import MonacoEditor, { MonacoDiffEditor } from 'react-monaco-editor'
+import { setDiagnosticsOptions } from 'monaco-yaml'
 import { noop } from 'lodash-es'
 import { SourceCodeEditorProps, PLAIN_TEXT } from 'utils/Utils'
 import { useEventListener } from 'hooks/useEventListener'
@@ -14,7 +32,9 @@ export const MonacoEditorOptions = {
   tabSize: 2,
   insertSpaces: true,
   overviewRulerBorder: false,
-  automaticLayout: true
+  automaticLayout: true,
+  fontSize: 13,
+  fontFamily: 'var(--font-family-mono)'
 }
 
 const diagnosticsOptions = {
@@ -22,8 +42,8 @@ const diagnosticsOptions = {
   noSyntaxValidation: true
 }
 
-const compilerOptions = {
-  jsx: 'react',
+const compilerOptions: monacoEditor.languages.typescript.CompilerOptions = {
+  jsx: monaco.languages.typescript.JsxEmit.ReactJSX,
   noLib: true,
   allowNonTsExtensions: true
 }
@@ -38,7 +58,10 @@ export default function MonacoSourceCodeEditor({
   height,
   autoHeight,
   wordWrap = true,
-  onChange = noop
+  onChange = noop,
+  schema,
+  editorDidMount,
+  editorOptions
 }: SourceCodeEditorProps) {
   const [editor, setEditor] = useState<monacoEditor.editor.IStandaloneCodeEditor>()
   const scrollbar = autoHeight ? 'hidden' : 'auto'
@@ -48,6 +71,24 @@ export default function MonacoSourceCodeEditor({
     monaco.languages.typescript?.javascriptDefaults?.setDiagnosticsOptions?.(diagnosticsOptions)
     monaco.languages.typescript?.typescriptDefaults?.setCompilerOptions?.(compilerOptions)
   }, [])
+
+  useEffect(() => {
+    if (language === 'yaml' && schema) {
+      setDiagnosticsOptions({
+        validate: true,
+        enableSchemaRequest: false,
+        hover: true,
+        completion: true,
+        schemas: [
+          {
+            fileMatch: ['*'],
+            schema,
+            uri: 'https://github.com/harness/harness-schema'
+          }
+        ]
+      })
+    }
+  }, [language, schema])
 
   useEventListener('resize', () => {
     editor?.layout({ width: 0, height: 0 })
@@ -62,6 +103,7 @@ export default function MonacoSourceCodeEditor({
       height={height}
       options={{
         ...MonacoEditorOptions,
+        ...editorOptions,
         readOnly,
         wordWrap: toOnOff(wordWrap),
         lineNumbers: toOnOff(lineNumbers),
@@ -72,6 +114,7 @@ export default function MonacoSourceCodeEditor({
         }
       }}
       editorDidMount={_editor => {
+        editorDidMount?.(_editor, monaco)
         if (autoHeight) {
           // autoAdjustEditorHeight(_editor)
         }

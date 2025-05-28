@@ -1,0 +1,120 @@
+.Avatar--AvatarInner {
+  border-width: 1px !important;
+}
+.bp3-button {
+  flex: none;
+}
+.bp3-button:not([class*=bp3-intent-]) {
+  background-image: none;
+}
+.Button--button[class*='bp3-button'].Button--variation,
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']).Button--variation {
+  border-radius: 3px;
+  --font-weight: normal;
+  --font-size: inherit;
+  --padding: 12px;
+}
+.Button--button[class*='bp3-button'].Button--variation.Button--variation-primary,
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']).Button--variation.Button--variation-primary {
+  --background-color-hover: var(--primary-8);
+}
+.Button--button[class*='bp3-button'].Button--iconOnly,
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']).Button--iconOnly {
+  padding: 0 4px !important;
+}
+.Button--button[class*='bp3-button'].Button--variation.Button--variation-tertiary,
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']).Button--variation.Button--variation-tertiary {
+  background-color: var(--btn-bg) !important;
+  border: 1px solid var(--btn-border-color) !important;
+}
+.Button--button[class*='bp3-button'].Button--variation.Button--variation-tertiary:hover,
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']).Button--variation.Button--variation-tertiary:hover {
+  background-color: var(--color-gray-100) !important;
+}
+.bp3-button .bp3-icon:first-child:last-child,
+.bp3-button .bp3-spinner + .bp3-icon:last-child {
+  margin: 0 -12px;
+}
+.bp3-popover-target .Button--button[class*='bp3-button'].Button--iconOnly {
+  min-width: 24px;
+}
+.bp3-popover-target .Button--button[class*='bp3-button'].Button--iconOnly .bp3-icon-chevron-down svg {
+  width: 12px;
+  height: 12px;
+}
+
+.SplitButton--dropdown::before {
+  top: 0;
+  height: 100%;
+  opacity: 0.2;
+}
+
+.Button--button[class*='bp3-button']:not(.Button--variation)[class*='minimal'],
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']):not(.Button--variation)[class*='minimal'] {
+  border: 1px solid transparent;
+}
+.Button--button[class*='bp3-button']:not(.Button--variation)[class*='minimal']:hover,
+.Button--button[class*='bp3-button']:not([class*='bp3-intent-']):not(.Button--variation)[class*='minimal']:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--color-border-strong);
+}
+
+.TableV2--table .TableV2--card.TableV2--clickable:hover {
+  transition: box-shadow 0.2s, border-color 0.2s;
+  box-shadow: var(--shadow-lg);
+}
+:not(.StyledProps--main) .StyledProps--main.StyledProps--font-variation-table-headers {
+  --typography-size: var(--font-size-normal);
+}
+
+.FormikForm--main .bp3-form-group .bp3-input,
+.TextInput--main .bp3-input {
+  border: 1px solid var(--form-control-border);
+  background-color: var(--color-canvas);
+  border-radius: 3px;
+}
+.FormikForm--main .bp3-form-group .bp3-input:hover,
+.TextInput--main .bp3-input:hover {
+  border-color: var(--form-control-border);
+}
+.FormikForm--main .bp3-form-group .bp3-input:focus,
+.TextInput--main .bp3-input:focus {
+  border-color: var(--form-control-focus);
+  box-shadow: 0 0 0 2px rgba(var(--color-focus-rgb), 0.4);
+}
+
+.FormikForm--main .bp3-label {
+  font-weight: normal;
+}
+
+.Dialog--dialog .bp3-dialog-header {
+  margin-bottom: 16px !important;
+}
+.Dialog--dialog .Dialog--close {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.Dialog--dialog .Dialog--close:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+.Dialog--dialog .bp3-dialog-header .bp3-heading,
+.bp3-dialog > div > h1,
+.bp3-dialog > div > h3 {
+  --typography-size: 16px !important;
+  font-size: 16px !important;
+  margin-top: -32px !important;
+  margin-right: 60px !important;
+}
+.bp3-portal .bp3-dialog .bp3-dialog-close-button {
+  transition: 0.2s background-color;
+}
+.bp3-portal .bp3-dialog .bp3-dialog-close-button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.bp3-transition-container {
+  transition-duration: 0.1s !important;
+}

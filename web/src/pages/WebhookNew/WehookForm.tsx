@@ -1,3 +1,19 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import {
   ButtonVariation,
   Container,
@@ -8,38 +24,21 @@ import {
   FormInput,
   Layout,
   Text,
-  FontVariation,
   useToaster
-} from '@harness/uicore'
+} from '@harnessio/uicore'
+import { FontVariation } from '@harnessio/design-system'
 import { useMutate } from 'restful-react'
 import { FormGroup } from '@blueprintjs/core'
 import { useHistory } from 'react-router-dom'
 import * as yup from 'yup'
 import React from 'react'
-import type { OpenapiUpdateWebhookRequest, EnumWebhookTrigger, OpenapiWebhookType } from 'services/code'
-import { getErrorMessage } from 'utils/Utils'
+import type { OpenapiUpdateRepoWebhookRequest, EnumWebhookTrigger, OpenapiWebhookType } from 'services/code'
+import { getErrorMessage, permissionProps } from 'utils/Utils'
 import { useStrings } from 'framework/strings'
-import type { GitInfoProps } from 'utils/GitUtils'
+import { WebhookIndividualEvent, type GitInfoProps, WebhookEventType } from 'utils/GitUtils'
 import { useAppContext } from 'AppContext'
+import { useGetSpaceParam } from 'hooks/useGetSpaceParam'
 import css from './WehookForm.module.scss'
-
-enum WebhookEventType {
-  PUSH = 'push',
-  ALL = 'all',
-  INDIVIDUAL = 'individual'
-}
-
-enum WebhookIndividualEvent {
-  BRANCH_CREATED = 'branch_created',
-  BRANCH_UPDATED = 'branch_updated',
-  BRANCH_DELETED = 'branch_deleted',
-  TAG_CREATED = 'tag_created',
-  TAG_UPDATED = 'tag_updated',
-  TAG_DELETED = 'tag_deleted',
-  PR_CREATED = 'pullreq_created',
-  PR_REOPENED = 'pullreq_reopened',
-  PR_BRANCH_UPDATED = 'pullreq_branch_updated'
-}
 
 const SECRET_MASK = '********'
 
@@ -58,8 +57,15 @@ interface FormData {
   tagUpdated: boolean
   tagDeleted: boolean
   prCreated: boolean
+  prUpdated: boolean
   prReopened: boolean
   prBranchUpdated: boolean
+  prClosed: boolean
+  prCommentCreated: boolean
+  prMerged: boolean
+  pullreqReviewerCreated: boolean
+  pullreqReviewerDeleted: boolean
+  pullreqReviewSubmitted: boolean
 }
 
 interface WebHookFormProps extends Pick<GitInfoProps, 'repoMetadata'> {
@@ -74,15 +80,26 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
   const { routes } = useAppContext()
   const { mutate, loading } = useMutate<OpenapiWebhookType>({
     verb: isEdit ? 'PATCH' : 'POST',
-    path: `/api/v1/repos/${repoMetadata.path}/+/webhooks${isEdit ? `/${webhook?.id}` : ''}`
+    path: `/api/v1/repos/${repoMetadata.path}/+/webhooks${isEdit ? `/${webhook?.identifier}` : ''}`
   })
-
+  const { hooks, standalone } = useAppContext()
+  const space = useGetSpaceParam()
+  const permPushResult = hooks?.usePermissionTranslate?.(
+    {
+      resource: {
+        resourceType: 'CODE_REPOSITORY',
+        resourceIdentifier: repoMetadata?.identifier as string
+      },
+      permissions: ['code_repo_edit']
+    },
+    [space]
+  )
   return (
     <Container padding="xxlarge">
       <Layout.Vertical className={css.form}>
         <Formik<FormData>
           initialValues={{
-            name: webhook?.display_name || '',
+            name: webhook?.identifier || '',
             description: webhook?.description || '',
             url: webhook?.url || '',
             secret: isEdit && webhook?.has_secret ? SECRET_MASK : '',
@@ -95,8 +112,15 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
             tagUpdated: webhook?.triggers?.includes(WebhookIndividualEvent.TAG_UPDATED) || false,
             tagDeleted: webhook?.triggers?.includes(WebhookIndividualEvent.TAG_DELETED) || false,
             prCreated: webhook?.triggers?.includes(WebhookIndividualEvent.PR_CREATED) || false,
+            prUpdated: webhook?.triggers?.includes(WebhookIndividualEvent.PR_UPDATED) || false,
             prReopened: webhook?.triggers?.includes(WebhookIndividualEvent.PR_REOPENED) || false,
             prBranchUpdated: webhook?.triggers?.includes(WebhookIndividualEvent.PR_BRANCH_UPDATED) || false,
+            prClosed: webhook?.triggers?.includes(WebhookIndividualEvent.PR_CLOSED) || false,
+            prCommentCreated: webhook?.triggers?.includes(WebhookIndividualEvent.PR_COMMENT_CREATED) || false,
+            prMerged: webhook?.triggers?.includes(WebhookIndividualEvent.PR_MERGED) || false,
+            pullreqReviewerCreated: webhook?.triggers?.includes(WebhookIndividualEvent.PR_REVIEWER_CREATED) || false,
+            pullreqReviewerDeleted: webhook?.triggers?.includes(WebhookIndividualEvent.PR_REVIEWER_DELETED) || false,
+            pullreqReviewSubmitted: webhook?.triggers?.includes(WebhookIndividualEvent.PR_REVIEW_SUBMITTED) || false,
             events: (webhook?.triggers?.length || 0) > 0 ? WebhookEventType.INDIVIDUAL : WebhookEventType.ALL
           }}
           formName="create-webhook-form"
@@ -104,8 +128,14 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
           validateOnChange
           validateOnBlur
           validationSchema={yup.object().shape({
-            name: yup.string().trim().required(),
-            url: yup.string().required().url()
+            name: yup
+              .string()
+              .trim()
+              .required(getString('validation.required', { name: getString('name') })), // GITFOX!
+            url: yup
+              .string()
+              .required(getString('validation.required', { name: getString('payloadUrlLabel') }))
+              .url() // GITFOX!
           })}
           onSubmit={formData => {
             const triggers: EnumWebhookTrigger[] = []
@@ -134,13 +164,33 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
               if (formData.prCreated) {
                 triggers.push(WebhookIndividualEvent.PR_CREATED)
               }
+              if (formData.prUpdated) {
+                triggers.push(WebhookIndividualEvent.PR_UPDATED)
+              }
               if (formData.prReopened) {
                 triggers.push(WebhookIndividualEvent.PR_REOPENED)
               }
               if (formData.prBranchUpdated) {
                 triggers.push(WebhookIndividualEvent.PR_BRANCH_UPDATED)
               }
-
+              if (formData.prClosed) {
+                triggers.push(WebhookIndividualEvent.PR_CLOSED)
+              }
+              if (formData.prCommentCreated) {
+                triggers.push(WebhookIndividualEvent.PR_COMMENT_CREATED)
+              }
+              if (formData.prMerged) {
+                triggers.push(WebhookIndividualEvent.PR_MERGED)
+              }
+              if (formData.pullreqReviewerCreated) {
+                triggers.push(WebhookIndividualEvent.PR_REVIEWER_CREATED)
+              }
+              if (formData.pullreqReviewerDeleted) {
+                triggers.push(WebhookIndividualEvent.PR_REVIEWER_DELETED)
+              }
+              if (formData.pullreqReviewSubmitted) {
+                triggers.push(WebhookIndividualEvent.PR_REVIEW_SUBMITTED)
+              }
               if (!triggers.length) {
                 return showError(getString('oneMustBeSelected'))
               }
@@ -148,8 +198,8 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
 
             const secret = (formData.secret || '').trim()
 
-            const data: OpenapiUpdateWebhookRequest = {
-              display_name: formData.name,
+            const data: OpenapiUpdateRepoWebhookRequest = {
+              identifier: formData.name,
               description: formData.description,
               url: formData.url,
               secret: secret !== SECRET_MASK ? secret : undefined,
@@ -260,6 +310,11 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
                           className={css.checkbox}
                         />
                         <FormInput.CheckBox
+                          label={getString('webhookPRUpdated')}
+                          name="prUpdated"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
                           label={getString('webhookPRReopened')}
                           name="prReopened"
                           className={css.checkbox}
@@ -267,6 +322,36 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
                         <FormInput.CheckBox
                           label={getString('webhookPRBranchUpdated')}
                           name="prBranchUpdated"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
+                          label={getString('webhookPRClosed')}
+                          name="prClosed"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
+                          label={getString('webhookPRCommentCreated')}
+                          name="prCommentCreated"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
+                          label={getString('webhookPRMerged')}
+                          name="prMerged"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
+                          label={getString('webhookPRReviewerCreated')}
+                          name="pullreqReviewerCreated"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
+                          label={getString('webhookPRReviewerDeleted')}
+                          name="pullreqReviewerDeleted"
+                          className={css.checkbox}
+                        />
+                        <FormInput.CheckBox
+                          label={getString('webhookPRReviewSubmitted')}
+                          name="pullreqReviewSubmitted"
                           className={css.checkbox}
                         />
                       </section>
@@ -304,6 +389,7 @@ export function WehookForm({ repoMetadata, isEdit, webhook }: WebHookFormProps) 
                     text={getString(isEdit ? 'updateWebhook' : 'createWebhook')}
                     variation={ButtonVariation.PRIMARY}
                     disabled={loading}
+                    {...permissionProps(permPushResult, standalone)}
                   />
 
                   <Button

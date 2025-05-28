@@ -1,0 +1,17 @@
+*.sqlite
+*.sqlite3
+web/node_modules
+web/dist
+release
+.idea
+coverage.out
+*.rsa
+*.rsa.pub
+
+# *.lock
+# web/*.lock
+
+# ignore any executables we build
+/gitfox
+.build
+.git

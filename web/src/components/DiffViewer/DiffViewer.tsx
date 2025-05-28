@@ -1,50 +1,69 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useMutate } from 'restful-react'
-import ReactDOM from 'react-dom'
-import { useInView } from 'react-intersection-observer'
+import { noop } from 'lodash-es'
+import { useGet, useMutate } from 'restful-react'
 import {
   Button,
-  Color,
   Container,
   FlexExpander,
   ButtonVariation,
   Layout,
   Text,
   ButtonSize,
-  useToaster,
-  ButtonProps
-} from '@harness/uicore'
+  Checkbox,
+  useIsMounted,
+  useToaster
+} from '@harnessio/uicore'
 import cx from 'classnames'
+import * as Diff2Html from 'diff2html'
 import { Render } from 'react-jsx-match'
 import { Link } from 'react-router-dom'
+import { useInView } from 'react-intersection-observer'
 import { Diff2HtmlUI } from 'diff2html/lib-esm/ui/js/diff2html-ui'
+import { Icon } from '@harnessio/icons'
+import { Color } from '@harnessio/design-system'
 import { useStrings } from 'framework/strings'
 import { CodeIcon, GitInfoProps } from 'utils/GitUtils'
-import { useEventListener } from 'hooks/useEventListener'
 import type { DiffFileEntry } from 'utils/types'
-import { useConfirmAct } from 'hooks/useConfirmAction'
-import { PipeSeparator } from 'components/PipeSeparator/PipeSeparator'
 import { useAppContext } from 'AppContext'
-import type { OpenapiCommentCreatePullReqRequest, TypesPullReq, TypesPullReqActivity } from 'services/code'
-import { getErrorMessage } from 'utils/Utils'
+import type { GitFileDiff, TypesPullReq, TypesPullReqActivity } from 'services/code'
 import { CopyButton } from 'components/CopyButton/CopyButton'
-import { AppWrapper } from 'App'
 import { NavigationCheck } from 'components/NavigationCheck/NavigationCheck'
-import { CodeCommentStatusButton } from 'components/CodeCommentStatusButton/CodeCommentStatusButton'
-import { CodeCommentSecondarySaveButton } from 'components/CodeCommentSecondarySaveButton/CodeCommentSecondarySaveButton'
-import { CodeCommentStatusSelect } from 'components/CodeCommentStatusSelect/CodeCommentStatusSelect'
+import type { UseGetPullRequestInfoResult } from 'pages/PullRequest/useGetPullRequestInfo'
+import { useQueryParams } from 'hooks/useQueryParams'
+import { useCustomEventListener, useEventListener } from 'hooks/useEventListener'
+import { useShowRequestError } from 'hooks/useShowRequestError'
+import { getErrorMessage, isInViewport } from 'utils/Utils'
+import { createRequestAnimationFrameTaskPool } from 'utils/Task'
+import { useResizeObserver } from 'hooks/useResizeObserver'
+import { useFindGitBranch } from 'hooks/useFindGitBranch'
+import Config from 'Config'
 import {
-  activitiesToDiffCommentItems,
-  activityToCommentItem,
-  CommentType,
   DIFF2HTML_CONFIG,
-  DiffCommentItem,
   DIFF_VIEWER_HEADER_HEIGHT,
-  getCommentLineInfo,
-  renderCommentOppositePlaceHolder,
-  ViewStyle
+  ViewStyle,
+  getFileViewedState,
+  FileViewedState,
+  DiffCommentItem
 } from './DiffViewerUtils'
-import { CommentAction, CommentBox, CommentBoxOutletPosition, CommentItem } from '../CommentBox/CommentBox'
+import { usePullReqComments } from './usePullReqComments'
+import Collapse from '../../icons/collapse.svg'
+import Expand from '../../icons/expand.svg'
 import css from './DiffViewer.module.scss'
 
 interface DiffViewerProps extends Pick<GitInfoProps, 'repoMetadata'> {
@@ -53,525 +72,565 @@ interface DiffViewerProps extends Pick<GitInfoProps, 'repoMetadata'> {
   stickyTopPosition?: number
   readOnly?: boolean
   pullRequestMetadata?: TypesPullReq
-  onCommentUpdate: () => void
-  mergeBaseSHA?: string
-  sourceSHA?: string
+  targetRef?: string
+  sourceRef?: string
+  commitRange?: string[]
+  scrollElement: HTMLElement
+  commitSHA?: string
+  refetchActivities?: UseGetPullRequestInfoResult['refetchActivities']
+  memorizedState: Map<string, DiffViewerExchangeState>
+  fullDiffAPIPath: string
 }
 
-//
-// Note: Lots of direct DOM manipulations are used to boost performance.
-//       Avoid React re-rendering at all cost as it might cause unresponsive UI
-//       when diff content is big, or when a PR has a lot of changed files.
-//
-export const DiffViewer: React.FC<DiffViewerProps> = ({
+const DiffViewerInternal: React.FC<DiffViewerProps> = ({
   diff,
   viewStyle,
   stickyTopPosition = 0,
   readOnly,
   repoMetadata,
-  pullRequestMetadata,
-  onCommentUpdate,
-  mergeBaseSHA,
-  sourceSHA
+  pullRequestMetadata: pullReqMetadata,
+  targetRef,
+  sourceRef,
+  commitRange,
+  scrollElement,
+  commitSHA,
+  refetchActivities,
+  memorizedState,
+  fullDiffAPIPath
 }) => {
   const { routes } = useAppContext()
   const { getString } = useStrings()
-  const [viewed, setViewed] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
-  const [fileUnchanged] = useState(diff.unchangedPercentage === 100)
-  const [fileDeleted] = useState(diff.isDeleted)
-  const [renderCustomContent, setRenderCustomContent] = useState(fileUnchanged || fileDeleted)
-  const [heightWithoutComments, setHeightWithoutComents] = useState<number | string>('auto')
-  const [diffRenderer, setDiffRenderer] = useState<Diff2HtmlUI>()
-  const { ref: inViewRef, inView } = useInView({ rootMargin: '100px 0px' })
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const { currentUser } = useAppContext()
   const { showError } = useToaster()
-  const confirmAct = useConfirmAct()
-  const path = useMemo(
-    () => `/api/v1/repos/${repoMetadata.path}/+/pullreq/${pullRequestMetadata?.number}/comments`,
-    [repoMetadata.path, pullRequestMetadata?.number]
+  const viewedPath = useMemo(
+    () => `/api/v1/repos/${repoMetadata.path}/+/pullreq/${pullReqMetadata?.number}/file-views`,
+    [repoMetadata.path, pullReqMetadata?.number]
   )
-  const { mutate: saveComment } = useMutate({ verb: 'POST', path })
-  const { mutate: updateComment } = useMutate({ verb: 'PATCH', path: ({ id }) => `${path}/${id}` })
-  const { mutate: deleteComment } = useMutate({ verb: 'DELETE', path: ({ id }) => `${path}/${id}` })
-  const [comments, setComments] = useState<DiffCommentItem<TypesPullReqActivity>[]>([])
-  const [dirty, setDirty] = useState(false)
-  const commentsRef = useRef<DiffCommentItem<TypesPullReqActivity>[]>(comments)
-  const setContainerRef = useCallback(
-    node => {
-      containerRef.current = node
-      inViewRef(node)
-    },
-    [inViewRef]
-  )
-  const contentRef = useRef<HTMLDivElement>(null)
-  const setupViewerInitialStates = useCallback(() => {
-    setDiffRenderer(
-      new Diff2HtmlUI(
-        document.getElementById(diff.contentId) as HTMLElement,
-        [diff],
-        Object.assign({}, DIFF2HTML_CONFIG, { outputFormat: viewStyle })
-      )
-    )
-  }, [diff, viewStyle])
-  const renderDiffAndUpdateContainerHeightIfNeeded = useCallback(
-    (enforced = false) => {
-      const contentDOM = contentRef.current as HTMLDivElement
-      const containerDOM = containerRef.current as HTMLDivElement
+  const { mutate: markViewed } = useMutate({ verb: 'PUT', path: viewedPath })
+  const { mutate: unmarkViewed } = useMutate({ verb: 'DELETE', path: ({ filePath }) => `${viewedPath}/${filePath}` })
 
-      if (!contentDOM.dataset.rendered || enforced) {
-        if (!renderCustomContent || enforced) {
-          containerDOM.style.height = 'auto'
-          diffRenderer?.draw()
-        }
-        contentDOM.dataset.rendered = 'true'
-        setHeightWithoutComents(containerDOM.clientHeight)
-      }
-    },
-    [diffRenderer, renderCustomContent]
+  const { path } = useQueryParams<{ path: string; commentId: string }>()
+  const shouldDiffBeShownByDefault = useMemo(() => path === diff.filePath, [path, diff.filePath])
+  const diffHasVeryLongLine = useMemo(
+    () => diff.blocks?.some(block => block.lines?.some(line => line.content?.length > Config.MAX_TEXT_LINE_SIZE_LIMIT)),
+    [diff]
+  )
+
+  // File viewed feature is only enabled if no commit range is provided (otherwise component is hidden, too)
+  const [viewed, setViewed] = useState(
+    commitRange?.length === 0 &&
+      getFileViewedState(diff.filePath, diff.checksumAfter, diff.fileViews) === FileViewedState.VIEWED &&
+      !shouldDiffBeShownByDefault
   )
 
   useEffect(() => {
-    // For some unknown reason, comments is [] when we switch to Changes tab very quickly sometimes,
-    // but diff is not empty, and activitiesToDiffCommentItems(diff) is not []. So assigning
-    // comments = activitiesToDiffCommentItems(diff) from the useState() is not enough.
-    if (diff) {
-      const _comments = activitiesToDiffCommentItems(diff)
-
-      if (_comments.length > 0 && !comments.length) {
-        setComments(_comments)
-      }
+    if (commitRange?.length === 0) {
+      setViewed(getFileViewedState(diff.filePath, diff.checksumAfter, diff.fileViews) === FileViewedState.VIEWED)
     }
-  }, [diff, comments])
+  }, [setViewed, diff.fileViews, diff.filePath, diff.checksumAfter, commitRange])
 
-  useEffect(
-    function createDiffRenderer() {
-      if (inView && !diffRenderer) {
-        setupViewerInitialStates()
-      }
-    },
-    [inView, diffRenderer, setupViewerInitialStates]
+  const showChangedSinceLastView = useMemo(
+    () =>
+      !readOnly &&
+      commitRange?.length === 0 &&
+      getFileViewedState(diff.filePath, diff.checksumAfter, diff.fileViews) === FileViewedState.CHANGED,
+    [readOnly, commitRange?.length, diff.filePath, diff.checksumAfter, diff.fileViews]
   )
-
-  useEffect(
-    function renderInitialContent() {
-      if (diffRenderer && inView) {
-        renderDiffAndUpdateContainerHeightIfNeeded()
-      }
-    },
-    [inView, diffRenderer, renderDiffAndUpdateContainerHeightIfNeeded]
+  const [collapsed, setCollapsed] = useState(viewed || !!memorizedState.get(diff.filePath)?.collapsed)
+  const isBinary = useMemo(() => diff.isBinary, [diff.isBinary])
+  const fileUnchanged = useMemo(
+    () => diff.unchangedPercentage === 100 || (diff.addedLines === 0 && diff.deletedLines === 0),
+    [diff.addedLines, diff.deletedLines, diff.unchangedPercentage]
   )
-
-  useEffect(
-    function handleCollapsedState() {
-      const containerDOM = containerRef.current as HTMLDivElement & { scrollIntoViewIfNeeded: () => void }
-      const { classList: containerClassList, style: containerStyle } = containerDOM
-
-      if (collapsed) {
-        containerClassList.add(css.collapsed)
-
-        // Fix scrolling position messes up with sticky header: When content of the diff content
-        // is above the diff header, we need to scroll it back to below the header, adjust window
-        // scrolling position to avoid the next diff scroll jump
-        const { y } = containerDOM.getBoundingClientRect()
-        if (y - stickyTopPosition < 1) {
-          containerDOM.scrollIntoView()
-
-          if (stickyTopPosition) {
-            window.scroll({ top: window.scrollY - stickyTopPosition })
-          }
-        }
-
-        if (parseInt(containerStyle.height) != DIFF_VIEWER_HEADER_HEIGHT) {
-          containerStyle.height = `${DIFF_VIEWER_HEADER_HEIGHT}px`
-        }
-      } else {
-        containerClassList.remove(css.collapsed)
-
-        const commentsHeight = comments.reduce((total, comment) => total + comment.height, 0) || 0
-        const newHeight = Number(heightWithoutComments) + commentsHeight
-
-        if (parseInt(containerStyle.height) != newHeight) {
-          containerStyle.height = `${newHeight}px`
-        }
-      }
-    },
-    [collapsed, heightWithoutComments, stickyTopPosition, comments]
+  const fileDeleted = useMemo(() => diff.isDeleted, [diff.isDeleted])
+  const isDiffTooLarge = useMemo(
+    () => diff.addedLines + diff.deletedLines > Config.PULL_REQUEST_LARGE_DIFF_CHANGES_LIMIT,
+    [diff.addedLines, diff.deletedLines]
   )
+  const [renderCustomContent, setRenderCustomContent] = useState(
+    !shouldDiffBeShownByDefault && (fileUnchanged || fileDeleted || isDiffTooLarge || isBinary || diffHasVeryLongLine)
+  )
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const diff2HtmlRef = useRef<{ renderer: Diff2HtmlUI; diff: DiffFileEntry }>()
+  const [dirty, setDirty] = useState(false)
+  const isMounted = useIsMounted()
+  const [useFullDiff, setUseFullDiff] = useState(!!memorizedState.get(diff.filePath)?.useFullDiff)
+  const { ref, inView } = useInView({
+    rootMargin: `500px 0px 500px 0px`,
+    initialInView: true
+  })
+  const setContainerRef = useCallback(
+    node => {
+      containerRef.current = node
+      ref(node)
+    },
+    [ref]
+  )
+  const contentHTML = useRef<string | null>(null)
 
-  useEventListener(
-    'click',
+  useResizeObserver(
+    contentRef,
     useCallback(
-      function clickToAddAnnotation(event: MouseEvent) {
-        if (readOnly) {
+      dom => {
+        if (isMounted.current && dom) {
+          dom.style.setProperty(BLOCK_HEIGHT, dom.clientHeight + 'px')
+        }
+      },
+      [isMounted]
+    )
+  )
+
+  //
+  // Handling custom events sent to DiffViewer from external components/features
+  // such as "jump to file", "jump to comment", etc...
+  //
+  useCustomEventListener<DiffViewerCustomEvent>(
+    diff.filePath,
+    useCallback(event => {
+      const { action, commentId } = event.detail
+      const containerDOM = document.getElementById(diff.containerId) as HTMLDivElement
+
+      function scrollToComment(count = 0) {
+        const commentDOM = containerDOM.querySelector(`[data-comment-id="${commentId}"]`) as HTMLDivElement
+
+        if (!isMounted.current || count > 100) {
           return
         }
 
-        const target = event.target as HTMLDivElement
-        const targetButton = target?.closest('[data-annotation-for-line]') as HTMLDivElement
-        const annotatedLineRow = targetButton?.closest('tr') as HTMLTableRowElement
-
-        const commentItem: DiffCommentItem<TypesPullReqActivity> = {
-          left: false,
-          right: false,
-          lineNumber: 0,
-          height: 0,
-          commentItems: []
+        if (commentDOM) {
+          const dom = commentDOM?.parentElement?.parentElement?.parentElement?.parentElement
+          if (dom) dom.lastElementChild?.scrollIntoView({ block: 'center' })
+        } else {
+          setTimeout(() => scrollToComment(count + 1), 100)
         }
+      }
 
-        if (targetButton && annotatedLineRow) {
-          if (viewStyle === ViewStyle.SIDE_BY_SIDE) {
-            const leftParent = targetButton.closest('.d2h-file-side-diff.left')
-            commentItem.left = !!leftParent
-            commentItem.right = !leftParent
-            commentItem.lineNumber = Number(targetButton.dataset.annotationForLine)
-          } else {
-            const lineInfoTD = targetButton.closest('td')?.previousElementSibling
-            const lineNum1 = lineInfoTD?.querySelector('.line-num1')
-            const lineNum2 = lineInfoTD?.querySelector('.line-num2')
+      function scrollToContainer() {
+        if (!isMounted.current) return
 
-            // Right has priority
-            commentItem.right = !!lineNum2?.textContent
-            commentItem.left = !commentItem.right
-            commentItem.lineNumber = Number(lineNum2?.textContent || lineNum1?.textContent)
+        containerDOM.scrollIntoView({ block: 'start' })
+
+        if (!commentId) {
+          // Check to adjust scroll position to make sure content is not
+          // cut off due to current scroll position
+          const scrollGap = containerDOM.getBoundingClientRect().y - stickyTopPosition
+          if (scrollGap < 1) {
+            scrollElement.scroll({ top: (scrollElement.scrollTop || window.scrollY) + scrollGap })
           }
-
-          setComments([...comments, commentItem])
+        } else {
+          scrollToComment()
         }
-      },
-      [viewStyle, comments, readOnly]
-    ),
-    containerRef.current as HTMLDivElement
+      }
+
+      switch (action) {
+        case DiffViewerEvent.SCROLL_INTO_VIEW: {
+          scrollToContainer()
+          break
+        }
+      }
+    }, []), // eslint-disable-line react-hooks/exhaustive-deps
+    () => !!diff.filePath
+  )
+
+  const commentsHook = usePullReqComments({
+    diff,
+    viewStyle,
+    stickyTopPosition,
+    readOnly,
+    repoMetadata,
+    pullReqMetadata,
+    targetRef,
+    sourceRef,
+    commitRange,
+    scrollElement,
+    collapsed,
+    containerRef,
+    contentRef,
+    refetchActivities,
+    setDirty,
+    memorizedState
+  })
+
+  useEffect(
+    function alwaysExpandDiffIfChangedSinceLastView() {
+      if (showChangedSinceLastView && collapsed && !viewed) {
+        setCollapsed(false)
+      }
+    },
+    [showChangedSinceLastView, viewed] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const renderDiffAndComments = useCallback(() => {
+    if (!isMounted.current) return
+
+    const fullDiff = memorizedState.get(diff.filePath)?.fullDiff
+    const _diff = useFullDiff && fullDiff ? fullDiff : diff
+
+    // Create a new diff renderer if cached diff is different from current diff
+    // to ensure when new commit is selected, the diff is re-rendered correctly
+    if (diff2HtmlRef.current?.diff !== _diff) {
+      diff2HtmlRef.current = {
+        renderer: new Diff2HtmlUI(
+          contentRef.current as HTMLDivElement,
+          [_diff],
+          Object.assign({}, DIFF2HTML_CONFIG, { outputFormat: viewStyle })
+        ),
+        diff: _diff
+      }
+    }
+
+    diff2HtmlRef.current.renderer.draw()
+    commentsHook.current.attachAllCommentThreads()
+  }, [commentsHook, diff, memorizedState, useFullDiff, viewStyle, isMounted])
+
+  useEffect(
+    function renderDiffAndCommentsIfInViewportOrSchedule() {
+      let taskId = 0
+
+      if (!renderCustomContent && !collapsed) {
+        if (isInViewport(containerRef.current as Element, 1000)) {
+          renderDiffAndComments()
+        } else {
+          taskId = scheduleTask(renderDiffAndComments)
+        }
+      }
+
+      memorizedState.set(diff.filePath, { ...memorizedState.get(diff.filePath), collapsed })
+
+      return () => cancelTask(taskId)
+    },
+    [collapsed, diff.filePath, memorizedState, isMounted, renderDiffAndComments, renderCustomContent]
+  )
+
+  const {
+    data: fullDiffData,
+    error: fullDiffError,
+    loading: fullDiffLoading,
+    refetch: getFullDiff,
+    cancel: cancelGetFullDiff
+  } = useGet<GitFileDiff[]>({
+    path: fullDiffAPIPath,
+    requestOptions: { headers: { Accept: 'application/json' } },
+    queryParams: { include_patch: true, path: diff.filePath, range: 1 },
+    lazy: !useFullDiff || !!memorizedState.get(diff.filePath)?.fullDiff
+  })
+
+  const branchInfo = useFindGitBranch(pullReqMetadata?.source_branch)
+
+  useEffect(
+    function serializeDeserializeContent() {
+      const dom = contentRef.current
+
+      if (inView) {
+        if (isMounted.current && dom && contentHTML.current) {
+          dom.innerHTML = contentHTML.current
+          contentHTML.current = null
+
+          // Remove all signs from the raw HTML that CommentBox was mounted so
+          // it can be mounted/re-rendered again freshly
+          dom.querySelectorAll('tr[data-source-line-number]').forEach(row => {
+            row.removeAttribute('data-source-line-number')
+            row.removeAttribute('data-comment-ids')
+            row.querySelector('button[data-toggle-comment="true"]')?.remove?.()
+          })
+          dom.querySelectorAll('tr[data-annotated-line],tr[data-place-holder-for-line]').forEach(row => {
+            row.remove?.()
+          })
+
+          // Attach comments again
+          commentsHook.current.attachAllCommentThreads()
+        }
+      } else {
+        if (isMounted.current && dom && !contentHTML.current) {
+          const { clientHeight, textContent, innerHTML } = dom
+
+          // Detach comments since they are no longer in sync in DOM as
+          // all DOMs are removed
+          commentsHook.current.detachAllCommentThreads()
+
+          // Save current innerHTML
+          contentHTML.current = innerHTML
+
+          const pre = document.createElement('pre')
+          pre.style.height = clientHeight + 'px'
+          pre.textContent = textContent
+          pre.classList.add(css.offscreenText)
+
+          dom.textContent = ''
+          dom.appendChild(pre)
+
+          // TODO: Might be good to clean textContent a bit to not include
+          // diff header info, line numbers, hunk headers, etc...
+        }
+      }
+    },
+    [inView, isMounted, commentsHook]
+  )
+
+  // Add click event listener from contentRef to handle click event on "Show Diff" button
+  // This can't be done from the button itself because it got serialized / deserialized from
+  // text during off-screen optimization (handler will be gone/destroyed)
+  useEventListener(
+    'click',
+    useCallback(function showDiff(event) {
+      if (((event.target as HTMLElement)?.closest('button') as HTMLElement)?.dataset?.action === ACTION_SHOW_DIFF) {
+        setRenderCustomContent(false)
+      }
+    }, []),
+    contentRef.current as HTMLDivElement
+  )
+
+  useShowRequestError(fullDiffError, 0)
+
+  useEffect(
+    function parseAndAssignFullDiff() {
+      if (fullDiffData) {
+        try {
+          memorizedState.set(diff.filePath, {
+            ...memorizedState.get(diff.filePath),
+            fullDiff: Diff2Html.parse(
+              window.atob((fullDiffData[0].patch as unknown as string) || ''),
+              DIFF2HTML_CONFIG
+            ).map(_diff => ({ ...diff, ..._diff }))[0],
+            useFullDiff: true
+          })
+
+          setUseFullDiff(true)
+          setRenderCustomContent(false)
+
+          if (memorizedState.get(diff.filePath)?.collapsed) {
+            setCollapsed(false)
+            memorizedState.set(diff.filePath, {
+              ...memorizedState.get(diff.filePath),
+              collapsed: false
+            })
+          }
+        } catch (exception) {
+          showError(getErrorMessage(exception), 5000)
+        }
+      }
+    },
+    [diff, diff.filePath, memorizedState, fullDiffData, showError]
   )
 
   useEffect(
-    function renderCodeComments() {
-      if (readOnly) {
-        return
-      }
+    function adjustScrollPositionWhenCollapsingFile() {
+      const containerDOM = containerRef.current as HTMLDivElement
 
-      const isSideBySide = viewStyle === ViewStyle.SIDE_BY_SIDE
-
-      // Update latest commentsRef to use it inside CommentBox callbacks
-      commentsRef.current = comments
-
-      comments.forEach(comment => {
-        const lineInfo = getCommentLineInfo(contentRef.current, comment, viewStyle)
-
-        if (lineInfo.rowElement) {
-          const { rowElement } = lineInfo
-
-          if (lineInfo.hasCommentsRendered) {
-            if (isSideBySide) {
-              const filesDiff = rowElement?.closest('.d2h-files-diff') as HTMLElement
-              const sideDiff = filesDiff?.querySelector(`div.${comment.left ? 'right' : 'left'}`) as HTMLElement
-              const oppositeRowPlaceHolder = sideDiff?.querySelector(
-                `tr[data-place-holder-for-line="${comment.lineNumber}"]`
-              )
-
-              const first = oppositeRowPlaceHolder?.firstElementChild as HTMLTableCellElement
-              const last = oppositeRowPlaceHolder?.lastElementChild as HTMLTableCellElement
-
-              if (first && last) {
-                first.style.height = `${comment.height}px`
-                last.style.height = `${comment.height}px`
-              }
-            }
-          } else {
-            // Mark row that it has comment/annotation
-            rowElement.dataset.annotated = 'true'
-
-            // Create a new row below it and render CommentBox inside
-            const commentRowElement = document.createElement('tr')
-            commentRowElement.dataset.annotatedLine = String(comment.lineNumber)
-            commentRowElement.innerHTML = `<td colspan="2"></td>`
-            rowElement.after(commentRowElement)
-
-            const element = commentRowElement.firstElementChild as HTMLTableCellElement
-            const resetCommentState = (ignoreCurrentComment = true) => {
-              // Clean up CommentBox rendering and reset states bound to lineInfo
-              ReactDOM.unmountComponentAtNode(element as HTMLDivElement)
-              commentRowElement.parentElement?.removeChild(commentRowElement)
-              lineInfo.oppositeRowElement?.parentElement?.removeChild(
-                lineInfo.oppositeRowElement?.nextElementSibling as Element
-              )
-              delete lineInfo.rowElement.dataset.annotated
-
-              setTimeout(
-                () =>
-                  setComments(
-                    commentsRef.current.filter(item => {
-                      if (ignoreCurrentComment) {
-                        return item !== comment
-                      }
-                      return true
-                    })
-                  ),
-                0
-              )
-            }
-
-            // Note: CommentBox is rendered as an independent React component
-            //       everything passed to it must be either values, or refs. If you
-            //       pass callbacks or states, they won't be updated and might
-            //       cause unexpected bugs
-            ReactDOM.unmountComponentAtNode(element as HTMLDivElement)
-            ReactDOM.render(
-              <AppWrapper>
-                <CommentBox
-                  commentItems={comment.commentItems}
-                  initialContent={''}
-                  width={isSideBySide ? 'calc(100vw / 2 - 163px)' : undefined} // TODO: Re-calcualte for standalone version
-                  onHeightChange={boxHeight => {
-                    if (comment.height !== boxHeight) {
-                      comment.height = boxHeight
-                      setTimeout(() => setComments([...commentsRef.current]), 0)
-                    }
-                  }}
-                  onCancel={resetCommentState}
-                  setDirty={setDirty}
-                  currentUserName={currentUser.display_name}
-                  handleAction={async (action, value, commentItem) => {
-                    let result = true
-                    let updatedItem: CommentItem<TypesPullReqActivity> | undefined = undefined
-                    const id = (commentItem as CommentItem<TypesPullReqActivity>)?.payload?.id
-
-                    switch (action) {
-                      case CommentAction.NEW: {
-                        const payload: OpenapiCommentCreatePullReqRequest = {
-                          line_start: comment.lineNumber,
-                          line_end: comment.lineNumber,
-                          line_start_new: !comment.left,
-                          line_end_new: !comment.left,
-                          path: diff.filePath,
-                          source_commit_sha: sourceSHA,
-                          target_commit_sha: mergeBaseSHA,
-                          text: value
-                        }
-
-                        await saveComment(payload)
-                          .then((newComment: TypesPullReqActivity) => {
-                            updatedItem = activityToCommentItem(newComment)
-                            diff.fileActivities?.push(newComment)
-                            comment.commentItems.push(updatedItem)
-                            resetCommentState(false)
-                          })
-                          .catch(exception => {
-                            result = false
-                            showError(getErrorMessage(exception), 0)
-                          })
-                        break
-                      }
-
-                      case CommentAction.REPLY: {
-                        await saveComment({
-                          type: CommentType.CODE_COMMENT,
-                          text: value,
-                          parent_id: Number(commentItem?.payload?.id as number)
-                        })
-                          .then(newComment => {
-                            updatedItem = activityToCommentItem(newComment)
-                            diff.fileActivities?.push(newComment)
-                          })
-                          .catch(exception => {
-                            result = false
-                            showError(getErrorMessage(exception), 0)
-                          })
-                        break
-                      }
-
-                      case CommentAction.DELETE: {
-                        result = false
-                        await confirmAct({
-                          message: getString('deleteCommentConfirm'),
-                          action: async () => {
-                            await deleteComment({}, { pathParams: { id } })
-                              .then(() => {
-                                result = true
-                              })
-                              .catch(exception => {
-                                result = false
-                                showError(getErrorMessage(exception), 0, getString('pr.failedToDeleteComment'))
-                              })
-                          }
-                        })
-                        break
-                      }
-
-                      case CommentAction.UPDATE: {
-                        await updateComment({ text: value }, { pathParams: { id } })
-                          .then(newComment => {
-                            updatedItem = activityToCommentItem(newComment)
-                          })
-                          .catch(exception => {
-                            result = false
-                            showError(getErrorMessage(exception), 0)
-                          })
-                        break
-                      }
-                    }
-
-                    if (result) {
-                      onCommentUpdate()
-                    }
-
-                    return [result, updatedItem]
-                  }}
-                  outlets={{
-                    [CommentBoxOutletPosition.LEFT_OF_OPTIONS_MENU]: (
-                      <CodeCommentStatusSelect
-                        repoMetadata={repoMetadata}
-                        pullRequestMetadata={pullRequestMetadata as TypesPullReq}
-                        onCommentUpdate={onCommentUpdate}
-                        commentItems={comment.commentItems}
-                      />
-                    ),
-                    [CommentBoxOutletPosition.LEFT_OF_REPLY_PLACEHOLDER]: (
-                      <CodeCommentStatusButton
-                        repoMetadata={repoMetadata}
-                        pullRequestMetadata={pullRequestMetadata as TypesPullReq}
-                        onCommentUpdate={onCommentUpdate}
-                        commentItems={comment.commentItems}
-                      />
-                    ),
-                    [CommentBoxOutletPosition.BETWEEN_SAVE_AND_CANCEL_BUTTONS]: (props: ButtonProps) => (
-                      <CodeCommentSecondarySaveButton
-                        repoMetadata={repoMetadata}
-                        pullRequestMetadata={pullRequestMetadata as TypesPullReq}
-                        commentItems={comment.commentItems}
-                        {...props}
-                      />
-                    )
-                  }}
-                  autoFocusAndPositioning
-                />
-              </AppWrapper>,
-              element
-            )
-
-            // Split view: Calculate, inject, and adjust an empty place-holder row in the opposite pane
-            if (isSideBySide && lineInfo.oppositeRowElement) {
-              renderCommentOppositePlaceHolder(comment, lineInfo.oppositeRowElement)
-            }
-          }
+      if (
+        containerDOM &&
+        !useFullDiff &&
+        memorizedState.get(diff.filePath)?.useFullDiff === false &&
+        !isInViewport(containerDOM)
+      ) {
+        if (stickyTopPosition && containerDOM.getBoundingClientRect().y - stickyTopPosition < 1) {
+          containerDOM.scrollIntoView()
+          scrollElement.scroll({ top: (scrollElement.scrollTop || window.scrollY) - stickyTopPosition })
         }
-      })
+      }
     },
-    [
-      comments,
-      viewStyle,
-      getString,
-      currentUser,
-      readOnly,
-      diff,
-      saveComment,
-      showError,
-      updateComment,
-      deleteComment,
-      confirmAct,
-      onCommentUpdate,
-      mergeBaseSHA,
-      sourceSHA,
-      pullRequestMetadata,
-      repoMetadata
-    ]
+    [scrollElement, stickyTopPosition, useFullDiff, diff, memorizedState]
   )
 
-  useEffect(function cleanUpCommentBoxRendering() {
-    const contentDOM = contentRef.current
-    return () => {
-      contentDOM
-        ?.querySelectorAll('[data-annotated-line]')
-        .forEach(element => ReactDOM.unmountComponentAtNode(element.firstElementChild as HTMLTableCellElement))
+  const toggleFullDiff = useCallback(() => {
+    // If full diff is not fetched, fetch it and set useFullDiff when data arrives
+    // Otherwise, toggle useFullDiff flag
+    if (!memorizedState.get(diff.filePath)?.fullDiff && !fullDiffLoading) {
+      cancelGetFullDiff()
+      getFullDiff()
+    } else {
+      memorizedState.set(diff.filePath, { ...memorizedState.get(diff.filePath), useFullDiff: !useFullDiff })
+      setUseFullDiff(!useFullDiff)
     }
-  }, [])
+  }, [useFullDiff, memorizedState, diff.filePath, cancelGetFullDiff, getFullDiff, fullDiffLoading])
+
+  const ToggleFullDiffIcon = useMemo(() => (useFullDiff ? Collapse : Expand), [useFullDiff])
 
   return (
     <Container
       ref={setContainerRef}
       id={diff.containerId}
       className={cx(css.main, { [css.readOnly]: readOnly })}
+      data-diff-file-path={diff.filePath}
       style={{ '--diff-viewer-sticky-top': `${stickyTopPosition}px` } as React.CSSProperties}>
       <Layout.Vertical>
         <Container className={css.diffHeader} height={DIFF_VIEWER_HEADER_HEIGHT}>
           <Layout.Horizontal>
             <Button
               variation={ButtonVariation.ICON}
-              icon={collapsed ? 'chevron-right' : 'chevron-down'}
+              icon={collapsed ? 'main-chevron-right' : 'main-chevron-down'}
               size={ButtonSize.SMALL}
               onClick={() => setCollapsed(!collapsed)}
+              iconProps={{
+                size: 12,
+                style: {
+                  color: '#383946',
+                  flexGrow: 1,
+                  justifyContent: 'center',
+                  display: 'flex'
+                }
+              }}
+              className={css.chevron}
             />
-            <Container style={{ alignSelf: 'center' }} padding={{ right: 'small' }}>
-              <Layout.Horizontal spacing="xsmall">
-                <Render when={diff.addedLines}>
-                  <Text color={Color.GREEN_600} style={{ fontSize: '12px' }}>
-                    +{diff.addedLines}
-                  </Text>
-                </Render>
-                <Render when={diff.addedLines && diff.deletedLines}>
-                  <PipeSeparator height={8} />
-                </Render>
-                <Render when={diff.deletedLines}>
-                  <Text color={Color.RED_500} style={{ fontSize: '12px' }}>
-                    -{diff.deletedLines}
-                  </Text>
-                </Render>
-              </Layout.Horizontal>
-            </Container>
-            <Text inline className={css.fname}>
+            <Button
+              variation={ButtonVariation.ICON}
+              className={css.expandCollapseDiffBtn}
+              onClick={toggleFullDiff}
+              title={getString(useFullDiff ? 'pr.collapseFullFile' : 'pr.expandFullFile')}>
+              <ToggleFullDiffIcon width="16" height="16" strokeWidth="2" />
+            </Button>
+            <Text
+              inline
+              className={css.fname}
+              lineClamp={1}
+              tooltipProps={{
+                portalClassName: css.popover,
+                className: css.fnamePopover
+              }}>
               <Link
                 to={routes.toCODERepository({
                   repoPath: repoMetadata.path as string,
-                  gitRef: pullRequestMetadata?.source_branch,
+                  gitRef: pullReqMetadata?.source_branch
+                    ? branchInfo
+                      ? pullReqMetadata?.source_branch
+                      : pullReqMetadata?.source_sha
+                    : commitSHA || '',
                   resourcePath: diff.isRename ? diff.newName : diff.filePath
                 })}>
                 {diff.isRename ? `${diff.oldName} -> ${diff.newName}` : diff.filePath}
               </Link>
+              <CopyButton content={diff.filePath} icon={CodeIcon.Copy} size={ButtonSize.SMALL} />
             </Text>
-            <CopyButton content={diff.filePath} icon={CodeIcon.Copy} size={ButtonSize.SMALL} />
+            <Container style={{ alignSelf: 'center' }} padding={{ left: 'small' }} margin={{ right: 'small' }}>
+              <Layout.Horizontal spacing="xsmall">
+                <Render when={diff.addedLines || diff.isNew}>
+                  <Text tag="span" className={css.addedLines}>
+                    +{diff.addedLines || 0}
+                  </Text>
+                </Render>
+                <Render when={diff.deletedLines || diff.isDeleted}>
+                  <Text tag="span" className={css.deletedLines}>
+                    -{diff.deletedLines || 0}
+                  </Text>
+                </Render>
+              </Layout.Horizontal>
+            </Container>
             <FlexExpander />
+
+            <Render when={showChangedSinceLastView}>
+              <Container>
+                <Text className={css.fileChanged}>{getString('changedSinceLastView')}</Text>
+              </Container>
+            </Render>
 
             <Render when={!readOnly}>
               <Container>
-                <label className={css.viewLabel}>
-                  <input
-                    type="checkbox"
-                    value="viewed"
-                    checked={viewed}
-                    onChange={() => {
-                      setViewed(!viewed)
-                      setCollapsed(!viewed)
-                    }}
-                  />
-                  {getString('viewed')}
-                </label>
+                <Layout.Horizontal spacing="xsmall" flex>
+                  {fullDiffLoading && (
+                    <Icon name="steps-spinner" color={Color.PRIMARY_7} margin={{ right: 'xsmall' }} />
+                  )}
+                  <Render when={commitRange?.length === 0}>
+                    <label className={css.viewLabel}>
+                      <Checkbox
+                        checked={viewed}
+                        onChange={async () => {
+                          if (viewed) {
+                            setViewed(false)
+                            setCollapsed(false)
+
+                            // update local data first
+                            diff.fileViews?.delete(diff.filePath)
+
+                            // best effort attempt to recflect on server (swallow exception - user still sees correct data locally)
+                            await unmarkViewed(null, { pathParams: { filePath: diff.filePath } }).catch(noop)
+                          } else {
+                            setViewed(true)
+                            setCollapsed(true)
+
+                            // update local data first
+                            // we could wait for server response for the guaranteed correct SHA, but this is non-crucial data so it's okay
+                            diff.fileViews?.set(diff.filePath, diff.checksumAfter || 'unknown')
+
+                            // best effort attempt to recflect on server (swallow exception - user still sees correct data locally)
+                            await markViewed(
+                              {
+                                path: diff.filePath,
+                                commit_sha: pullReqMetadata?.source_sha
+                              },
+                              {}
+                            ).catch(noop)
+                          }
+                        }}
+                      />
+                      {getString('viewed')}
+                    </label>
+                  </Render>
+                </Layout.Horizontal>
               </Container>
             </Render>
           </Layout.Horizontal>
         </Container>
 
-        <Container id={diff.contentId} className={css.diffContent} ref={contentRef}>
-          <Render when={renderCustomContent}>
-            <Container>
-              <Layout.Vertical padding="xlarge" style={{ alignItems: 'center' }}>
-                <Render when={fileDeleted}>
-                  <Button
-                    variation={ButtonVariation.LINK}
-                    onClick={() => {
-                      setRenderCustomContent(false)
-                      setTimeout(() => renderDiffAndUpdateContainerHeightIfNeeded(true), 0)
-                    }}>
-                    {getString('pr.showDiff')}
-                  </Button>
-                </Render>
-                <Text>{getString(fileDeleted ? 'pr.fileDeleted' : 'pr.fileUnchanged')}</Text>
-              </Layout.Vertical>
-            </Container>
-          </Render>
+        <Container id={diff.contentId} data-path={diff.filePath} className={css.diffContent} ref={contentRef}>
+          {/* Note: This parent container is needed to make sure "Show Diff" work correctly 
+            with content converted between textContent and innerHTML */}
+          <Container>
+            <Render when={renderCustomContent && !collapsed}>
+              <Container height={200} flex={{ align: 'center-center' }}>
+                <Layout.Vertical padding="xlarge" style={{ alignItems: 'center' }}>
+                  <Render when={fileDeleted || isDiffTooLarge || diffHasVeryLongLine}>
+                    <Button variation={ButtonVariation.LINK} data-action={ACTION_SHOW_DIFF}>
+                      {getString('pr.showDiff')}
+                    </Button>
+                  </Render>
+                  <Text>
+                    {getString(
+                      fileDeleted
+                        ? 'pr.fileDeleted'
+                        : isDiffTooLarge || diffHasVeryLongLine
+                        ? 'pr.diffTooLarge'
+                        : isBinary
+                        ? 'pr.fileBinary'
+                        : 'pr.fileUnchanged'
+                    )}
+                  </Text>
+                </Layout.Vertical>
+              </Container>
+            </Render>
+          </Container>
         </Container>
       </Layout.Vertical>
       <NavigationCheck when={dirty} />
     </Container>
   )
 }
+
+const BLOCK_HEIGHT = '--block-height'
+const ACTION_SHOW_DIFF = 'showDiff'
+
+export enum DiffViewerEvent {
+  SCROLL_INTO_VIEW = 'scrollIntoView'
+}
+
+export interface DiffViewerCustomEvent {
+  action: DiffViewerEvent
+  commentId?: string
+}
+
+export interface DiffViewerExchangeState {
+  collapsed?: boolean
+  useFullDiff?: boolean
+  fullDiff?: DiffFileEntry
+  comments?: Map<number, CommentRestorationTrackingState>
+  commentsVisibilityAtLineNumber?: Map<number, boolean>
+}
+
+export interface CommentRestorationTrackingState extends DiffCommentItem<TypesPullReqActivity> {
+  uncommittedText?: string
+  showReplyPlaceHolder?: boolean
+  uncommittedEditComments?: Map<number, string>
+}
+
+const { scheduleTask, cancelTask } = createRequestAnimationFrameTaskPool()
+
+export const DiffViewer = React.memo(DiffViewerInternal)

@@ -15,6 +15,8 @@
   { "label": "Eclipse Public License 1.0", "value": "epl-1.0" },
   { "label": "Eclipse Public License 2.0", "value": "epl-2.0" },
   { "label": "European Union Public License 1.1", "value": "eupl-1.1" },
+  { "label": "木兰宽松许可证 v2", "value": "mulanpsl-v2"},
+  { "label": "木兰公共许可证 v2", "value": "mulanpubl-v2"},
   { "label": "GNU Affero General Public License v3.0", "value": "agpl-3.0" },
   { "label": "GNU General Public License family", "value": "gpl" },
   { "label": "GNU General Public License v2.0", "value": "gpl-2.0" },

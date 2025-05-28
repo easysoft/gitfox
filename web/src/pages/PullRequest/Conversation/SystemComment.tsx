@@ -1,34 +1,59 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import React from 'react'
-import {
-  Avatar,
-  Color,
-  Container,
-  FontVariation,
-  Icon,
-  IconName,
-  Layout,
-  StringSubstitute,
-  Text
-} from '@harness/uicore'
-import ReactTimeago from 'react-timeago'
-import { Render } from 'react-jsx-match'
-import { CodeIcon, GitInfoProps } from 'utils/GitUtils'
-import { MarkdownViewer } from 'components/MarkdownViewer/MarkdownViewer'
+import { Avatar, Container, Layout, StringSubstitute, Text } from '@harnessio/uicore'
+import { Icon, IconName } from '@harnessio/icons'
+import { Color, FontVariation } from '@harnessio/design-system'
+import { defaultTo } from 'lodash-es'
+import { Case, Falsy, Match, Truthy } from 'react-jsx-match'
+import { CodeIcon, GitInfoProps, MergeStrategy } from 'utils/GitUtils'
 import { useStrings } from 'framework/strings'
 import type { TypesPullReqActivity } from 'services/code'
 import type { CommentItem } from 'components/CommentBox/CommentBox'
-import { formatDate, formatTime } from 'utils/Utils'
-import { CommentType } from 'components/DiffViewer/DiffViewerUtils'
+import { PullRequestSection } from 'utils/Utils'
+import { CommentType, LabelActivity, ReviewerAddActivity } from 'components/DiffViewer/DiffViewerUtils'
+import { useAppContext } from 'AppContext'
+import { CommitActions } from 'components/CommitActions/CommitActions'
+import { PipeSeparator } from 'components/PipeSeparator/PipeSeparator'
+import { TimePopoverWithLocal } from 'utils/timePopoverLocal/TimePopoverWithLocal'
+import { Label } from 'components/Label/Label'
 import css from './Conversation.module.scss'
 
-interface SystemCommentProps extends Pick<GitInfoProps, 'pullRequestMetadata'> {
+interface SystemCommentProps extends Pick<GitInfoProps, 'pullReqMetadata'> {
   commentItems: CommentItem<TypesPullReqActivity>[]
+  repoMetadataPath?: string
 }
 
-export const SystemComment: React.FC<SystemCommentProps> = ({ pullRequestMetadata, commentItems }) => {
+interface MergePayload {
+  merge_sha: string
+  merge_method: string
+  rules_bypassed: boolean
+}
+
+interface ReviewerAddActivityPayload {
+  reviewer_type: ReviewerAddActivity
+}
+//ToDo : update all comment options with the correct payload type and remove Unknown
+export const SystemComment: React.FC<SystemCommentProps> = ({ pullReqMetadata, commentItems, repoMetadataPath }) => {
   const { getString } = useStrings()
   const payload = commentItems[0].payload
   const type = payload?.type
+  const { routes } = useAppContext()
+  const isZtFlow = pullReqMetadata.flow
 
   switch (type) {
     case CommentType.MERGE: {
@@ -39,15 +64,53 @@ export const SystemComment: React.FC<SystemCommentProps> = ({ pullRequestMetadat
               <Icon name={CodeIcon.Merged} size={16} color={Color.PURPLE_700} />
             </Container>
 
-            <Avatar name={pullRequestMetadata.merger?.display_name} size="small" hoverCard={false} />
-            <Text>
+            <Avatar name={pullReqMetadata.merger?.display_name} size="small" hoverCard={false} />
+            <Text flex tag="div" style={{ whiteSpace: 'nowrap' }}>
               <StringSubstitute
-                str={getString('pr.prMergedInfo')}
+                str={
+                  (payload?.payload as MergePayload)?.merge_method === MergeStrategy.REBASE
+                    ? getString(isZtFlow ? 'pr.prRebasedInfoFlow' : 'pr.prRebasedInfo')
+                    : getString(isZtFlow ? 'pr.prMergedInfoFlow' : 'pr.prMergedInfo')
+                }
                 vars={{
-                  user: <strong>{pullRequestMetadata.merger?.display_name}</strong>,
-                  source: <strong>{pullRequestMetadata.source_branch}</strong>,
-                  target: <strong>{pullRequestMetadata.target_branch} </strong>,
-                  time: <ReactTimeago date={pullRequestMetadata.merged as number} />
+                  user: <strong className={css.rightTextPadding}>{pullReqMetadata.merger?.display_name}</strong>,
+                  source: (
+                    <Text lineClamp={1}>
+                      <strong className={css.textPadding}>{pullReqMetadata.source_branch}</strong>
+                    </Text>
+                  ),
+                  target: (
+                    <Text lineClamp={1}>
+                      <strong className={css.textPadding}>{pullReqMetadata.target_branch}</strong>
+                    </Text>
+                  ),
+                  bypassed: (payload?.payload as MergePayload)?.rules_bypassed,
+                  mergeSha: (
+                    <Container className={css.commitContainer} padding={{ left: 'small', right: 'xsmall' }}>
+                      <CommitActions
+                        enableCopy
+                        sha={(payload?.payload as MergePayload)?.merge_sha}
+                        href={routes.toCODEPullRequest({
+                          repoPath: repoMetadataPath as string,
+                          pullRequestSection: PullRequestSection.FILES_CHANGED,
+                          pullRequestId: String(pullReqMetadata.number),
+                          commitSHA: (payload?.payload as MergePayload)?.merge_sha as string
+                        })}
+                      />
+                    </Container>
+                  ),
+                  time: (
+                    <Text inline margin={{ left: 'xsmall' }}>
+                      <PipeSeparator height={9} />
+                      <TimePopoverWithLocal
+                        time={defaultTo(pullReqMetadata.merged as number, 0)}
+                        inline={false}
+                        className={css.timeText}
+                        font={{ variation: FontVariation.SMALL }}
+                        color={Color.GREY_400}
+                      />
+                    </Text>
+                  )
                 }}
               />
             </Text>
@@ -73,7 +136,18 @@ export const SystemComment: React.FC<SystemCommentProps> = ({ pullRequestMetadat
                 vars={{
                   user: <strong>{payload?.author?.display_name}</strong>,
                   state: (payload?.payload as Unknown)?.decision,
-                  time: <ReactTimeago className={css.timeText} date={payload?.created as number} />
+                  time: (
+                    <Text inline margin={{ left: 'xsmall' }}>
+                      <PipeSeparator height={9} />
+                      <TimePopoverWithLocal
+                        time={defaultTo(payload?.created as number, 0)}
+                        inline={false}
+                        className={css.timeText}
+                        font={{ variation: FontVariation.SMALL }}
+                        color={Color.GREY_400}
+                      />
+                    </Text>
+                  )
                 }}
               />
             </Text>
@@ -87,23 +161,127 @@ export const SystemComment: React.FC<SystemCommentProps> = ({ pullRequestMetadat
         <Container>
           <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }} className={css.mergedBox}>
             <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
-            <Text>
+            <Text flex tag="div">
+              {(payload?.payload as Unknown)?.forced ? (
+                <StringSubstitute
+                  str={getString('pr.prBranchForcePushInfo')}
+                  vars={{
+                    user: (
+                      <Text padding={{ right: 'small' }} inline>
+                        <strong>{payload?.author?.display_name}</strong>
+                      </Text>
+                    ),
+                    oldCommit: (
+                      <Container className={css.commitContainer} padding={{ left: 'small', right: 'small' }}>
+                        <CommitActions
+                          enableCopy
+                          sha={(payload?.payload as Unknown)?.old}
+                          href={routes.toCODEPullRequest({
+                            repoPath: repoMetadataPath as string,
+                            pullRequestSection: PullRequestSection.FILES_CHANGED,
+                            pullRequestId: String(pullReqMetadata.number),
+                            commitSHA: (payload?.payload as Unknown)?.old as string
+                          })}
+                        />
+                      </Container>
+                    ),
+                    newCommit: (
+                      <Container className={css.commitContainer} padding={{ left: 'small' }}>
+                        <CommitActions
+                          enableCopy
+                          sha={(payload?.payload as Unknown)?.new}
+                          href={routes.toCODEPullRequest({
+                            repoPath: repoMetadataPath as string,
+                            pullRequestSection: PullRequestSection.FILES_CHANGED,
+                            pullRequestId: String(pullReqMetadata.number),
+                            commitSHA: (payload?.payload as Unknown)?.new as string
+                          })}
+                        />
+                      </Container>
+                    )
+                  }}
+                />
+              ) : (
+                <StringSubstitute
+                  str={getString('pr.prBranchPushInfo')}
+                  vars={{
+                    user: (
+                      <Text padding={{ right: 'small' }} inline>
+                        <strong>{payload?.author?.display_name}</strong>
+                      </Text>
+                    ),
+                    commit: (
+                      <Container className={css.commitContainer} padding={{ left: 'small' }}>
+                        <CommitActions
+                          enableCopy
+                          sha={(payload?.payload as Unknown)?.new}
+                          href={routes.toCODEPullRequest({
+                            repoPath: repoMetadataPath as string,
+                            pullRequestSection: PullRequestSection.FILES_CHANGED,
+                            pullRequestId: String(pullReqMetadata.number),
+                            commitSHA: (payload?.payload as Unknown)?.new as string
+                          })}
+                        />
+                      </Container>
+                    )
+                  }}
+                />
+              )}
+            </Text>
+            <PipeSeparator height={9} />
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
+              font={{ variation: FontVariation.SMALL }}
+              color={Color.GREY_400}
+            />
+          </Layout.Horizontal>
+        </Container>
+      )
+    }
+
+    case CommentType.BRANCH_DELETE:
+    case CommentType.BRANCH_RESTORE: {
+      const isSourceBranchDeleted = type === CommentType.BRANCH_DELETE
+      return (
+        <Container>
+          <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }} className={css.mergedBox}>
+            <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
+            <Text flex tag="div">
               <StringSubstitute
-                str={getString('pr.prBranchPushInfo')}
+                str={isSourceBranchDeleted ? getString('pr.prBranchDeleteInfo') : getString('pr.prBranchRestoreInfo')}
                 vars={{
-                  user: <strong>{payload?.author?.display_name}</strong>,
-                  commit: <strong>{(payload?.payload as Unknown)?.new}</strong>
+                  user: (
+                    <Text padding={{ right: 'small' }} inline>
+                      <strong>{payload?.author?.display_name}</strong>
+                    </Text>
+                  ),
+                  commit: (
+                    <Container className={css.commitContainer} padding={{ left: 'small' }}>
+                      <CommitActions
+                        enableCopy
+                        sha={(payload?.payload as Unknown)?.sha}
+                        href={routes.toCODEPullRequest({
+                          repoPath: repoMetadataPath as string,
+                          pullRequestSection: PullRequestSection.FILES_CHANGED,
+                          pullRequestId: String(pullReqMetadata.number),
+                          commitSHA: (payload?.payload as Unknown)?.sha as string
+                        })}
+                      />
+                    </Container>
+                  )
                 }}
               />
             </Text>
-            <Text
-              inline
+            <PipeSeparator height={9} />
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              width={100}
+              inline={true}
               font={{ variation: FontVariation.SMALL }}
               color={Color.GREY_400}
-              width={100}
-              style={{ textAlign: 'right' }}>
-              <ReactTimeago date={payload?.created as number} />
-            </Text>
+            />
           </Layout.Horizontal>
         </Container>
       )
@@ -112,30 +290,31 @@ export const SystemComment: React.FC<SystemCommentProps> = ({ pullRequestMetadat
     case CommentType.STATE_CHANGE: {
       const openFromDraft =
         (payload?.payload as Unknown)?.old_draft === true && (payload?.payload as Unknown)?.new_draft === false
-
+      const changedToDraft =
+        (payload?.payload as Unknown)?.old_draft === false && (payload?.payload as Unknown)?.new_draft === true
       return (
         <Container>
           <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }} className={css.mergedBox}>
             <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
             <Text>
               <StringSubstitute
-                str={getString(openFromDraft ? 'pr.prStateChangedDraft' : 'pr.prStateChanged')}
+                str={getString(openFromDraft || changedToDraft ? 'pr.prStateChangedDraft' : 'pr.prStateChanged')}
                 vars={{
+                  changedToDraft,
                   user: <strong>{payload?.author?.display_name}</strong>,
                   old: <strong>{(payload?.payload as Unknown)?.old}</strong>,
                   new: <strong>{(payload?.payload as Unknown)?.new}</strong>
                 }}
               />
             </Text>
-
-            <Text
-              inline
+            <PipeSeparator height={9} />
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
               font={{ variation: FontVariation.SMALL }}
               color={Color.GREY_400}
-              width={100}
-              style={{ textAlign: 'right' }}>
-              <ReactTimeago date={payload?.created as number} />
-            </Text>
+            />
           </Layout.Horizontal>
         </Container>
       )
@@ -160,36 +339,215 @@ export const SystemComment: React.FC<SystemCommentProps> = ({ pullRequestMetadat
                 }}
               />
             </Text>
+            <PipeSeparator height={9} />
 
-            <Text
-              inline
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
               font={{ variation: FontVariation.SMALL }}
               color={Color.GREY_400}
-              width={100}
-              style={{ textAlign: 'right' }}>
-              <ReactTimeago date={payload?.created as number} />
-            </Text>
+            />
           </Layout.Horizontal>
-          <Render when={commentItems.length > 1}>
-            <Container
-              margin={{ top: 'medium', left: 'xxxlarge' }}
-              style={{ maxWidth: 'calc(100vw - 450px)', overflow: 'auto' }}>
-              <MarkdownViewer
-                source={[getString('pr.titleChangedTable').replace(/\n$/, '')]
-                  .concat(
-                    commentItems
-                      .filter((_, index) => index > 0)
-                      .map(
-                        item =>
-                          `|${item.author}|<s>${(item.payload?.payload as Unknown)?.old}</s>|${
-                            (item.payload?.payload as Unknown)?.new
-                          }|${formatDate(item.updated)} ${formatTime(item.updated)}|`
-                      )
+        </Container>
+      )
+    }
+
+
+    case CommentType.REVIEWER_DELETE: {
+      return (
+        <Container>
+          <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }} className={css.mergedBox}>
+            <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
+            <Text flex tag="div">
+              <StringSubstitute
+                str={getString('pr.prReviewerRemoved')}
+                vars={{
+                  user: (
+                    <Text padding={{ right: 'small' }} inline>
+                      <strong>{payload?.author?.display_name}</strong>
+                    </Text>
+                  ),
+                  reviewer: (
+                    <Text padding={{ right: 'small' }} inline>
+                      <strong>{(payload?.payload as Unknown)?.reviewer?.display_name}</strong>
+                    </Text>
                   )
-                  .join('\n')}
+                }}
               />
-            </Container>
-          </Render>
+            </Text>
+            <PipeSeparator height={9} />
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
+              font={{ variation: FontVariation.SMALL }}
+              color={Color.GREY_400}
+            />
+          </Layout.Horizontal>
+        </Container>
+      )
+    }
+    case CommentType.LABEL_MODIFY: {
+      return (
+        <Container className={css.mergedBox}>
+          <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }}>
+            <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
+            <Text tag="div">
+              <Match expr={(payload?.payload as Unknown).type}>
+                <Case val={LabelActivity.ASSIGN}>
+                  <strong>{payload?.author?.display_name}</strong> {getString('labels.applied')}
+                  <Label
+                    name={(payload?.payload as Unknown).label}
+                    label_color={(payload?.payload as Unknown).label_color}
+                    label_value={{
+                      name: (payload?.payload as Unknown).value,
+                      color: (payload?.payload as Unknown).value_color
+                    }}
+                    scope={(payload?.payload as Unknown).label_scope}
+                  />
+                  <span>{getString('labels.label')}</span>
+                </Case>
+                <Case val={LabelActivity.RE_ASSIGN}>
+                  <strong>{payload?.author?.display_name}</strong> <span>{getString('labels.updated')}</span>
+                  <Label
+                    name={(payload?.payload as Unknown).label}
+                    label_color={(payload?.payload as Unknown).label_color}
+                    label_value={{
+                      name: (payload?.payload as Unknown).old_value,
+                      color: (payload?.payload as Unknown).old_value_color
+                    }}
+                    scope={(payload?.payload as Unknown).label_scope}
+                  />
+                  <span>{getString('labels.labelTo')}</span>
+                  <Label
+                    name={(payload?.payload as Unknown).label}
+                    label_color={(payload?.payload as Unknown).label_color}
+                    label_value={{
+                      name: (payload?.payload as Unknown).value,
+                      color: (payload?.payload as Unknown).value_color
+                    }}
+                    scope={(payload?.payload as Unknown).label_scope}
+                  />
+                </Case>
+                <Case val={LabelActivity.UN_ASSIGN}>
+                  <strong>{payload?.author?.display_name}</strong> <span>{getString('labels.removed')}</span>
+                  <Label
+                    name={(payload?.payload as Unknown).label}
+                    label_color={(payload?.payload as Unknown).label_color}
+                    label_value={{
+                      name: (payload?.payload as Unknown).value,
+                      color: (payload?.payload as Unknown).value_color
+                    }}
+                    scope={(payload?.payload as Unknown).label_scope}
+                  />
+                  <span>{getString('labels.label')}</span>
+                </Case>
+              </Match>
+            </Text>
+            <PipeSeparator height={9} />
+
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
+              font={{ variation: FontVariation.SMALL }}
+              color={Color.GREY_400}
+            />
+          </Layout.Horizontal>
+        </Container>
+      )
+    }
+
+    case CommentType.REVIEWER_ADD: {
+      const mentionId = payload?.metadata?.mentions?.ids?.[0] ?? 0
+      const mentionDisplayName = payload?.mentions?.[mentionId]?.display_name ?? ''
+      return (
+        <Container className={css.mergedBox}>
+          <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }}>
+            <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
+            <Text tag="div">
+              <Match expr={(payload?.payload as ReviewerAddActivityPayload).reviewer_type}>
+                <Case val={ReviewerAddActivity.ASSIGNED}>
+                  <StringSubstitute
+                    str={getString('prReview.assigned')}
+                    vars={{
+                      author: <strong>{payload?.author?.display_name}</strong>,
+                      reviewer: <strong>{mentionDisplayName}</strong>
+                    }}
+                  />
+                </Case>
+                <Case val={ReviewerAddActivity.REQUESTED}>
+                  <StringSubstitute
+                    str={getString('prReview.requested')}
+                    vars={{
+                      author: <strong>{payload?.author?.display_name}</strong>,
+                      reviewer: <strong>{mentionDisplayName}</strong>
+                    }}
+                  />
+                </Case>
+                <Case val={ReviewerAddActivity.SELF_ASSIGNED}>
+                  <StringSubstitute
+                    str={getString('prReview.selfAssigned')}
+                    vars={{
+                      reviewer: <strong>{mentionDisplayName}</strong>
+                    }}
+                  />
+                </Case>
+              </Match>
+            </Text>
+            <PipeSeparator height={9} />
+
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
+              font={{ variation: FontVariation.SMALL }}
+              color={Color.GREY_400}
+            />
+          </Layout.Horizontal>
+        </Container>
+      )
+    }
+
+    case CommentType.REVIEWER_DELETE: {
+      const mentionId = payload?.metadata?.mentions?.ids?.[0] ?? 0
+      const mentionDisplayName = payload?.mentions?.[mentionId]?.display_name ?? ''
+      return (
+        <Container className={css.mergedBox}>
+          <Layout.Horizontal spacing="small" style={{ alignItems: 'center' }}>
+            <Avatar name={payload?.author?.display_name} size="small" hoverCard={false} />
+            <Text tag="div">
+              <Match expr={payload?.author?.id === mentionId}>
+                <Truthy>
+                  <StringSubstitute
+                    str={getString('prReview.selfRemoved')}
+                    vars={{
+                      author: <strong>{payload?.author?.display_name}</strong>
+                    }}
+                  />
+                </Truthy>
+                <Falsy>
+                  <StringSubstitute
+                    str={getString('prReview.removed')}
+                    vars={{
+                      author: <strong>{payload?.author?.display_name}</strong>,
+                      reviewer: <strong>{mentionDisplayName}</strong>
+                    }}
+                  />
+                </Falsy>
+              </Match>
+            </Text>
+            <PipeSeparator height={9} />
+
+            <TimePopoverWithLocal
+              time={defaultTo(payload?.created as number, 0)}
+              inline={true}
+              width={100}
+              font={{ variation: FontVariation.SMALL }}
+              color={Color.GREY_400}
+            />
+          </Layout.Horizontal>
         </Container>
       )
     }

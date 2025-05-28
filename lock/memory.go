@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package lock
 
@@ -41,8 +51,10 @@ func (m *InMemory) NewMutex(key string, options ...Option) (Mutex, error) {
 	config := m.config
 
 	// set default delayFunc
-	config.delayFunc = func(i int) time.Duration {
-		return config.retryDelay
+	if config.DelayFunc == nil {
+		config.DelayFunc = func(_ int) time.Duration {
+			return config.RetryDelay
+		}
 	}
 
 	// override config with custom options
@@ -51,25 +63,32 @@ func (m *InMemory) NewMutex(key string, options ...Option) (Mutex, error) {
 	}
 
 	// format key
-	key = formatKey(config.app, config.namespace, key)
+	key = formatKey(config.App, config.Namespace, key)
 
 	switch {
-	case config.value != "":
-		token = config.value
-	case config.genValueFunc != nil:
-		token, err = config.genValueFunc()
+	case config.Value != "":
+		token = config.Value
+	case config.GenValueFunc != nil:
+		token, err = config.GenValueFunc()
 	default:
 		token, err = randstr(32)
 	}
 	if err != nil {
-		return nil, NewError(GenerateTokenFailed, key, nil)
+		return nil, NewError(ErrorKindGenerateTokenFailed, key, nil)
+	}
+
+	// waitTime logic is similar to redis implementation:
+	// https://github.com/go-redsync/redsync/blob/e1e5da6654c81a2069d6a360f1a31c21f05cd22d/mutex.go#LL81C4-L81C100
+	waitTime := config.Expiry
+	if config.TimeoutFactor > 0 {
+		waitTime = time.Duration(int64(float64(config.Expiry) * config.TimeoutFactor))
 	}
 
 	lock := inMemMutex{
-		expiry:    config.expiry,
-		waitTime:  15 * time.Second,
-		tries:     config.tries,
-		delayFunc: config.delayFunc,
+		expiry:    config.Expiry,
+		waitTime:  waitTime,
+		tries:     config.Tries,
+		delayFunc: config.DelayFunc,
 		provider:  m,
 		key:       key,
 		token:     token,
@@ -130,53 +149,70 @@ type inMemMutex struct {
 }
 
 // Key returns the key to be locked.
-func (l *inMemMutex) Key() string {
-	return l.key
+func (m *inMemMutex) Key() string {
+	return m.key
 }
 
 // Lock acquires the lock. It fails with error if the lock is already held.
-func (l *inMemMutex) Lock(ctx context.Context) error {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+func (m *inMemMutex) Lock(ctx context.Context) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 
-	if l.isHeld {
-		return NewError(LockHeld, l.key, nil)
+	if m.isHeld {
+		return NewError(ErrorKindLockHeld, m.key, nil)
 	}
 
-	if l.provider.acquire(l.key, l.token, l.expiry) {
-		l.isHeld = true
+	if m.provider.acquire(m.key, m.token, m.expiry) {
+		m.isHeld = true
 		return nil
 	}
 
-	timeout := time.NewTimer(l.waitTime)
+	timeout := time.NewTimer(m.waitTime)
 	defer timeout.Stop()
 
-	for i := 1; i <= l.tries; i++ {
-		select {
-		case <-ctx.Done():
-			return NewError(Context, l.key, ctx.Err())
-		case <-timeout.C:
-			return NewError(CannotLock, l.key, nil)
-		case <-time.After(l.delayFunc(i)):
-			if l.provider.acquire(l.key, l.token, l.expiry) {
-				l.isHeld = true
-				return nil
-			}
+	for i := 1; !m.isHeld && i <= m.tries; i++ {
+		if err := m.retry(ctx, i, timeout); err != nil {
+			return err
 		}
 	}
-	return NewError(MaxRetriesExceeded, l.key, nil)
+	return nil
+}
+
+func (m *inMemMutex) retry(ctx context.Context, attempt int, timeout *time.Timer) error {
+	if m.isHeld {
+		return nil
+	}
+	if attempt == m.tries {
+		return NewError(ErrorKindMaxRetriesExceeded, m.key, nil)
+	}
+
+	delay := time.NewTimer(m.delayFunc(attempt))
+	defer delay.Stop()
+
+	select {
+	case <-ctx.Done():
+		return NewError(ErrorKindContext, m.key, ctx.Err())
+	case <-timeout.C:
+		return NewError(ErrorKindCannotLock, m.key, nil)
+	case <-delay.C: // just wait
+	}
+
+	if m.provider.acquire(m.key, m.token, m.expiry) {
+		m.isHeld = true
+	}
+	return nil
 }
 
 // Unlock releases the lock. It fails with error if the lock is not currently held.
-func (l *inMemMutex) Unlock(_ context.Context) error {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
+func (m *inMemMutex) Unlock(_ context.Context) error {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 
-	if !l.isHeld || !l.provider.release(l.key, l.token) {
-		return NewError(LockNotHeld, l.key, nil)
+	if !m.isHeld || !m.provider.release(m.key, m.token) {
+		return NewError(ErrorKindLockNotHeld, m.key, nil)
 	}
 
-	l.isHeld = false
+	m.isHeld = false
 	return nil
 }
 

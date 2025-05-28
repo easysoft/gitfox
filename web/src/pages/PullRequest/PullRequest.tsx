@@ -1,115 +1,82 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  Container,
-  PageBody,
-  Text,
-  FontVariation,
-  Tabs,
-  IconName,
-  HarnessIcons,
-  Layout,
-  Button,
-  ButtonVariation,
-  ButtonSize,
-  TextInput,
-  useToaster,
-  Spacing,
-  PaddingProps
-} from '@harness/uicore'
-import { useGet, useMutate } from 'restful-react'
-import { Render, Match, Truthy, Else } from 'react-jsx-match'
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import React, { useCallback, useMemo, useRef, useState } from 'react'
+import { Container, Layout, PageBody, Tabs, Text } from '@harnessio/uicore'
+import { IconName } from '@harnessio/icons'
+import { Color, FontVariation } from '@harnessio/design-system'
+import { Render } from 'react-jsx-match'
 import { useHistory } from 'react-router-dom'
+import { compact } from 'lodash-es'
 import { useAppContext } from 'AppContext'
-import { useGetRepositoryMetadata } from 'hooks/useGetRepositoryMetadata'
 import { useStrings } from 'framework/strings'
 import { RepositoryPageHeader } from 'components/RepositoryPageHeader/RepositoryPageHeader'
-import { voidFn, getErrorMessage } from 'utils/Utils'
-import { CodeIcon, GitInfoProps } from 'utils/GitUtils'
-import type { TypesPullReq, TypesPullReqStats, TypesRepository } from 'services/code'
+import { getErrorMessage, PullRequestSection } from 'utils/Utils'
+import { CodeIcon } from 'utils/GitUtils'
+import type { TypesPullReq, RepoRepositoryOutput, TypesAIRequest } from 'services/code'
 import { LoadingSpinner } from 'components/LoadingSpinner/LoadingSpinner'
+import { TabTitleWithCount, tabContainerCSS } from 'components/TabTitleWithCount/TabTitleWithCount'
+import { ExecutionStatus, ExecutionState } from 'components/ExecutionStatus/ExecutionStatus'
+import { useSetPageContainerWidthVar } from 'hooks/useSetPageContainerWidthVar'
+import { useScrollTop } from 'hooks/useScrollTop'
 import { PullRequestMetaLine } from './PullRequestMetaLine'
 import { Conversation } from './Conversation/Conversation'
 import { Checks } from './Checks/Checks'
 import { Changes } from '../../components/Changes/Changes'
 import { PullRequestCommits } from './PullRequestCommits/PullRequestCommits'
+import { PullRequestAIReview } from './PullRequestAIReview/PullRequestAIReview'
+import { PullRequestTitle } from './PullRequestTitle'
+import { useGetPullRequestInfo } from './useGetPullRequestInfo'
 import css from './PullRequest.module.scss'
 
 export default function PullRequest() {
   const history = useHistory()
   const { getString } = useStrings()
-  const { routes } = useAppContext()
+  const { routes, standalone, routingId } = useAppContext()
   const {
     repoMetadata,
-    error,
     loading,
-    refetch,
+    error,
+    pullReqChecksDecision,
+    showEditDescription,
+    setShowEditDescription,
+    pullReqMetadata,
+    pullReqStats,
+    pullReqCommits,
+    pullReqLastAIReview,
     pullRequestId,
-    pullRequestSection = PullRequestSection.CONVERSATION
-  } = useGetRepositoryMetadata()
-  const path = useMemo(
-    () => `/api/v1/repos/${repoMetadata?.path}/+/pullreq/${pullRequestId}`,
-    [repoMetadata?.path, pullRequestId]
-  )
-  const {
-    data: pullRequestData,
-    error: prError,
-    loading: prLoading,
-    refetch: refetchPullRequest
-  } = useGet<TypesPullReq>({
-    path,
-    lazy: !repoMetadata
-  })
-  const [prData, setPrData] = useState<TypesPullReq>()
-  const showSpinner = useMemo(() => {
-    return loading || (prLoading && !prData)
-  }, [loading, prLoading, prData])
-  const [stats, setStats] = useState<TypesPullReqStats>()
-  const prHasChanged = useMemo(() => {
-    if (stats && prData?.stats) {
-      if (
-        stats.commits !== prData.stats.commits ||
-        stats.conversations !== prData.stats.conversations ||
-        stats.files_changed !== prData.stats.files_changed
-      ) {
-        window.setTimeout(() => setStats(prData.stats), 50)
-        return true
-      }
-    }
-    return false
-  }, [prData?.stats, stats])
+    pullRequestSection,
+    commitSHA,
+    refetchActivities,
+    refetchCommits,
+    refetchAIReview,
+    refetchPullReq,
+    retryOnErrorFunc
+  } = useGetPullRequestInfo()
 
-  useEffect(
-    function setStatsIfNotSet() {
-      if (!stats && prData?.stats) {
-        setStats(prData.stats)
-      }
-    },
-    [prData?.stats, stats]
-  )
-
-  // prData holds the latest good PR data to make sure page is not broken
-  // when polling fails
-  useEffect(
-    function setPrDataIfNotSet() {
-      if (pullRequestData) {
-        setPrData(pullRequestData)
-      }
-    },
-    [pullRequestData]
-  )
-
-  useEffect(() => {
-    const fn = () => {
-      if (repoMetadata) {
-        refetchPullRequest().then(() => {
-          interval = window.setTimeout(fn, PR_POLLING_INTERVAL)
-        })
-      }
-    }
-    let interval = window.setTimeout(fn, PR_POLLING_INTERVAL)
-
-    return () => window.clearTimeout(interval)
-  }, [repoMetadata, refetchPullRequest, path])
+  const onAddDescriptionClick = useCallback(() => {
+    setShowEditDescription(true)
+    history.replace(
+      routes.toCODEPullRequest({
+        repoPath: repoMetadata?.path as string,
+        pullRequestId,
+        pullRequestSection: PullRequestSection.CONVERSATION
+      })
+    )
+  }, [history, routes, repoMetadata?.path, pullRequestId, setShowEditDescription])
 
   const activeTab = useMemo(
     () =>
@@ -119,12 +86,28 @@ export default function PullRequest() {
     [pullRequestSection]
   )
 
+  const [pullReqChangesCount, setPullReqChangesCount] = useState(0)
+
+  const domRef = useRef<HTMLDivElement>(null)
+  useSetPageContainerWidthVar({ domRef })
+  useScrollTop()
+
   return (
-    <Container className={css.main}>
+    <Container className={css.main} ref={domRef}>
       <RepositoryPageHeader
         repoMetadata={repoMetadata}
-        title={repoMetadata && prData ? <PullRequestTitle repoMetadata={repoMetadata} {...prData} /> : ''}
-        dataTooltipId="repositoryPullRequests"
+        title={
+          repoMetadata && pullReqMetadata ? (
+            <PullRequestTitle
+              repoMetadata={repoMetadata}
+              {...pullReqMetadata}
+              onAddDescriptionClick={onAddDescriptionClick}
+            />
+          ) : (
+            ''
+          )
+        }
+        dataTooltipId="repositoryPullRequest"
         extraBreadcrumbLinks={
           repoMetadata && [
             {
@@ -134,19 +117,21 @@ export default function PullRequest() {
           ]
         }
       />
-      <PageBody error={!prData && getErrorMessage(error || prError)} retryOnError={voidFn(refetch)}>
-        <LoadingSpinner visible={showSpinner} />
+      <PageBody error={getErrorMessage(error)} retryOnError={retryOnErrorFunc}>
+        <LoadingSpinner visible={loading} />
 
-        <Render when={repoMetadata && prData}>
+        <Render when={repoMetadata && pullReqMetadata}>
           <>
-            <PullRequestMetaLine repoMetadata={repoMetadata as TypesRepository} {...prData} />
-            <Container className={css.tabsContainer}>
+            <PullRequestMetaLine repoMetadata={repoMetadata as RepoRepositoryOutput} {...pullReqMetadata} />
+
+            <Container className={tabContainerCSS.tabsContainer}>
               <Tabs
                 id="prTabs"
                 defaultSelectedTabId={activeTab}
+                selectedTabId={activeTab}
                 large={false}
                 onChange={tabId => {
-                  history.replace(
+                  history.push(
                     routes.toCODEPullRequest({
                       repoPath: repoMetadata?.path as string,
                       pullRequestId,
@@ -158,77 +143,165 @@ export default function PullRequest() {
                   {
                     id: PullRequestSection.CONVERSATION,
                     title: (
-                      <TabTitle
+                      <TabTitleWithCount
                         icon={CodeIcon.Chat}
                         title={getString('conversation')}
-                        count={prData?.stats?.conversations || 0}
+                        count={pullReqMetadata?.stats?.conversations || 0}
                       />
                     ),
                     panel: (
                       <Conversation
-                        repoMetadata={repoMetadata as TypesRepository}
-                        pullRequestMetadata={prData as TypesPullReq}
-                        onCommentUpdate={voidFn(refetchPullRequest)}
-                        prHasChanged={prHasChanged}
+                        routingId={routingId}
+                        standalone={standalone}
+                        repoMetadata={repoMetadata as RepoRepositoryOutput}
+                        pullReqMetadata={pullReqMetadata as TypesPullReq}
+                        prChecksDecisionResult={pullReqChecksDecision}
+                        onDescriptionSaved={() => {
+                          setShowEditDescription(false)
+                        }}
+                        pullReqCommits={pullReqCommits}
+                        prStats={pullReqStats}
+                        showEditDescription={showEditDescription}
+                        onCancelEditDescription={() => setShowEditDescription(false)}
+                        refetchPullReq={refetchPullReq}
+                        refetchActivities={refetchActivities}
                       />
                     )
                   },
                   {
                     id: PullRequestSection.COMMITS,
                     title: (
-                      <TabTitle
+                      <TabTitleWithCount
                         icon={CodeIcon.Commit}
                         title={getString('commits')}
-                        count={prData?.stats?.commits || 0}
+                        count={pullReqStats?.commits || 0}
                         padding={{ left: 'medium' }}
                       />
                     ),
                     panel: (
                       <PullRequestCommits
-                        repoMetadata={repoMetadata as TypesRepository}
-                        pullRequestMetadata={prData as TypesPullReq}
-                        prHasChanged={prHasChanged}
-                        handleRefresh={voidFn(refetchPullRequest)}
+                        repoMetadata={repoMetadata as RepoRepositoryOutput}
+                        pullReqMetadata={pullReqMetadata as TypesPullReq}
+                        pullReqCommits={pullReqCommits}
                       />
                     )
                   },
                   {
                     id: PullRequestSection.FILES_CHANGED,
                     title: (
-                      <TabTitle
+                      <TabTitleWithCount
                         icon={CodeIcon.File}
                         title={getString('filesChanged')}
-                        count={prData?.stats?.files_changed || 0}
+                        count={pullReqChangesCount || pullReqStats?.files_changed || 0}
                         padding={{ left: 'medium' }}
                       />
                     ),
                     panel: (
-                      <Container className={css.changes}>
-                        <Changes
-                          repoMetadata={repoMetadata as TypesRepository}
-                          pullRequestMetadata={prData as TypesPullReq}
-                          targetBranch={prData?.target_branch}
-                          sourceBranch={prData?.source_branch}
-                          emptyTitle={getString('noChanges')}
-                          emptyMessage={getString('noChangesPR')}
-                          onCommentUpdate={voidFn(refetchPullRequest)}
-                          prHasChanged={prHasChanged}
-                        />
+                      <Container className={css.changes} data-page-section={PullRequestSection.FILES_CHANGED}>
+                        {!!repoMetadata && !!pullReqMetadata && !!pullReqStats && (
+                          <Changes
+                            repoMetadata={repoMetadata}
+                            pullRequestMetadata={pullReqMetadata}
+                            pullReqCommits={pullReqCommits}
+                            defaultCommitRange={compact(commitSHA?.split(/~1\.\.\.|\.\.\./g))}
+                            targetRef={pullReqMetadata.merge_base_sha}
+                            sourceRef={pullReqMetadata.source_sha}
+                            emptyTitle={getString('noChanges')}
+                            emptyMessage={getString('noChangesPR')}
+                            refetchActivities={refetchActivities}
+                            refetchCommits={refetchCommits}
+                            setPullReqChangesCount={setPullReqChangesCount}
+                            scrollElement={
+                              (standalone
+                                ? document.querySelector(`.${css.main}`)?.parentElement || window
+                                : window) as HTMLElement
+                            }
+                          />
+                        )}
                       </Container>
                     )
                   },
-                  {
-                    id: PullRequestSection.CHECKS,
-                    disabled: window.location.hostname !== 'localhost', // TODO: Remove when API supports checks
+                  ...(pullReqLastAIReview ? [{
+                    id: PullRequestSection.AI_REVIEW,
                     title: (
-                      <TabTitle
-                        icon={CodeIcon.ChecksSuccess}
-                        title={getString('checks')}
-                        count={0} // TODO: Count for checks when API supports it
+                      <TabTitleWithCount
+                        icon={CodeIcon.GitfoxCopilot}
+                        iconSize={16}
+                        title={getString('aiSettings.aiReview')}
+                        countElement={
+                          pullReqLastAIReview?.review_status ? (
+                            <Container className={css.checksCount}>
+                              <Layout.Horizontal className={css.checksCountLayout}>
+                                 <ExecutionStatus
+                                  status={
+                                    !pullReqLastAIReview?.review_status ? ExecutionState.KILLED :
+                                    pullReqLastAIReview?.review_status === 'rejected' ? ExecutionState.FAILURE :
+                                    pullReqLastAIReview?.review_status === 'approved' ? ExecutionState.SUCCESS :
+                                    pullReqLastAIReview?.review_status === 'ignore' ? ExecutionState.SKIPPED :
+                                    ExecutionState.KILLED
+                                  }
+                                  noBackground
+                                  iconOnly
+                                  inPr
+                                  iconSize={pullReqLastAIReview?.review_status === 'rejected' ? 17 : 15}
+                                />
+                              </Layout.Horizontal>
+                            </Container>
+                          ) : null
+                        }
+                        count={0}
                         padding={{ left: 'medium' }}
                       />
                     ),
-                    panel: <Checks />
+                    panel: (
+                      <PullRequestAIReview
+                        repoMetadata={repoMetadata as RepoRepositoryOutput}
+                        pullReqMetadata={pullReqMetadata as TypesPullReq}
+                        pullReqLastAIReview={pullReqLastAIReview}
+                      />
+                    )
+                  }]:[]),
+                  {
+                    id: PullRequestSection.CHECKS,
+                    title: (
+                      <TabTitleWithCount
+                        icon={CodeIcon.CheckIcon}
+                        iconSize={16}
+                        title={getString('checks')}
+                        countElement={
+                          pullReqChecksDecision?.overallStatus ? (
+                            <Container className={css.checksCount}>
+                              <Layout.Horizontal className={css.checksCountLayout}>
+                                <ExecutionStatus
+                                  status={pullReqChecksDecision?.overallStatus}
+                                  noBackground
+                                  iconOnly
+                                  inPr
+                                  iconSize={pullReqChecksDecision?.overallStatus === 'failure' ? 17 : 15}
+                                />
+
+                                <Text
+                                  color={pullReqChecksDecision?.color}
+                                  padding={{ left: 'xsmall' }}
+                                  tag="span"
+                                  font={{ variation: FontVariation.FORM_MESSAGE_WARNING }}>
+                                  {pullReqChecksDecision?.count[pullReqChecksDecision?.overallStatus]}
+                                </Text>
+                              </Layout.Horizontal>
+                            </Container>
+                          ) : null
+                        }
+                        count={pullReqChecksDecision?.count?.failure || 0}
+                        padding={{ left: 'medium' }}
+                      />
+                    ),
+                    panel: (
+                      <Checks
+                        repoMetadata={repoMetadata as RepoRepositoryOutput}
+                        pullReqMetadata={pullReqMetadata as TypesPullReq}
+                        prChecksDecisionResult={pullReqChecksDecision}
+                      />
+                    )
                   }
                 ]}
               />
@@ -240,120 +313,27 @@ export default function PullRequest() {
   )
 }
 
-interface PullRequestTitleProps extends TypesPullReq, Pick<GitInfoProps, 'repoMetadata'> {
-  onSaveDone?: (newTitle: string) => Promise<boolean>
+const generateLastExecutionStateIcon = (
+  aireq: TypesAIRequest
+): { icon: IconName; iconProps?: { color?: Color } } => {
+  let icon: IconName = 'dot'
+  let color: Color | undefined = undefined
+  let className: string | undefined = undefined
+  switch (aireq.review_status) {
+    case 'rejected':
+      icon = 'running-filled'
+      className = css.failure
+      break
+    case 'approved':
+      icon = 'execution-success'
+      break
+    default:
+      color = Color.GREY_250
+  }
+
+  return { icon, ...(color ? { iconProps: { color } } : undefined) }
 }
 
-const PullRequestTitle: React.FC<PullRequestTitleProps> = ({ repoMetadata, title, number, description }) => {
-  const [original, setOriginal] = useState(title)
-  const [val, setVal] = useState(title)
-  const [edit, setEdit] = useState(false)
-  const { getString } = useStrings()
-  const { showError } = useToaster()
-  const { mutate } = useMutate({
-    verb: 'PATCH',
-    path: `/api/v1/repos/${repoMetadata.path}/+/pullreq/${number}`
-  })
-  const submitChange = useCallback(() => {
-    mutate({
-      title: val,
-      description
-    })
-      .then(() => {
-        setEdit(false)
-        setOriginal(val)
-      })
-      .catch(exception => showError(getErrorMessage(exception), 0))
-  }, [description, val, mutate, showError])
-
-  return (
-    <Layout.Horizontal spacing="xsmall" className={css.prTitle}>
-      <Match expr={edit}>
-        <Truthy>
-          <Container>
-            <Layout.Horizontal spacing="small">
-              <TextInput
-                wrapperClassName={css.input}
-                value={val}
-                onFocus={event => event.target.select()}
-                onInput={event => setVal(event.currentTarget.value)}
-                autoFocus
-                onKeyDown={event => {
-                  switch (event.key) {
-                    case 'Enter':
-                      submitChange()
-                      break
-                    case 'Escape': // does not work, maybe TextInput cancels ESC?
-                      setEdit(false)
-                      break
-                  }
-                }}
-              />
-              <Button
-                variation={ButtonVariation.PRIMARY}
-                text={getString('save')}
-                size={ButtonSize.MEDIUM}
-                disabled={(val || '').trim().length === 0 || title === val}
-                onClick={submitChange}
-              />
-              <Button
-                variation={ButtonVariation.TERTIARY}
-                text={getString('cancel')}
-                size={ButtonSize.MEDIUM}
-                onClick={() => setEdit(false)}
-              />
-            </Layout.Horizontal>
-          </Container>
-        </Truthy>
-        <Else>
-          <>
-            <Text tag="h1" font={{ variation: FontVariation.H4 }}>
-              {original} <span className={css.prNumber}>#{number}</span>
-            </Text>
-            <Button
-              variation={ButtonVariation.ICON}
-              tooltip={getString('edit')}
-              tooltipProps={{ isDark: true, position: 'right' }}
-              size={ButtonSize.SMALL}
-              icon="code-edit"
-              className={css.btn}
-              onClick={() => setEdit(true)}
-            />
-          </>
-        </Else>
-      </Match>
-    </Layout.Horizontal>
-  )
-}
-
-const TabTitle: React.FC<{ icon: IconName; title: string; count?: number; padding?: Spacing | PaddingProps }> = ({
-  icon,
-  title,
-  count,
-  padding
-}) => {
-  // Icon inside a tab got overriden-and-looked-bad styles from UICore
-  // on hover. Use icon directly instead
-  const TabIcon: React.ElementType = HarnessIcons[icon]
-
-  return (
-    <Text className={css.tabTitle} padding={padding}>
-      <TabIcon width={16} height={16} />
-      {title}
-      <Render when={count}>
-        <Text inline className={css.count}>
-          {count}
-        </Text>
-      </Render>
-    </Text>
-  )
-}
-
-enum PullRequestSection {
-  CONVERSATION = 'conversation',
-  COMMITS = 'commits',
-  FILES_CHANGED = 'changes',
-  CHECKS = 'checks'
-}
-
-const PR_POLLING_INTERVAL = 10000
+// TODO:
+// - Move pullReqChecksDecision to individual component to avoid weird
+//   re-rendering everything in this page during its polling. Use an atom?

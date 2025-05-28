@@ -1,0 +1,99 @@
+version: 1
+kind: pipeline
+spec:
+  options:
+    envs:
+      REGISTRY_HOST: hub.zentao.net
+      IMAGE_REPOSITORY: app/gitfox-oss
+  stages:
+    - name: prepare
+      type: ci
+      spec:
+        when: build.event != "pull_request"
+        volumes:
+          - name: cache
+            type: claim
+            spec:
+              claimName: gitfox-build-cache
+        steps:
+          - name: 定义镜像TAG
+            type: run
+            when: |
+              build.event == "push"
+              or
+              build.event == "manual"
+            spec:
+              container: hub.zentao.net/app/debian:11.8-slim
+              script:
+              - image_tag=`echo $GITFOX_BRANCH | tr '/' '_' `
+              - echo "APP_IMAGE=${REGISTRY_HOST}/${IMAGE_REPOSITORY}:${image_tag}" >> $GITFOX_CUSTOM_ENV
+          - name: 定义镜像TAG
+            type: run
+            when: build.event == "tag"
+            spec:
+              container: hub.zentao.net/app/debian:11.8-slim
+              script:
+              - echo "APP_IMAGE=${REGISTRY_HOST}/${IMAGE_REPOSITORY}:${GITFOX_TAG#v}" >> $GITFOX_CUSTOM_ENV
+              - cat $GITFOX_CUSTOM_ENV
+          - name: 构建Web
+            type: run
+            spec:
+              container:
+                image: hub.zentao.net/ci/node:20.11.1-bookworm-slim
+              mount:
+              - name: cache
+                path: /mnt/yarn_cache
+                subPath: yarn
+              script:
+              - yarn config set cache-folder /mnt/yarn_cache
+              - cd web && yarn --frozen-lockfile
+              - yarn build
+          - name: 编译二进制
+            type: run
+            spec:
+              envs:
+                GOPROXY: "https://goproxy.cn,direct"
+                #GOMODCACHE: /mnt/go_cache/mod
+                #GOCACHE: /mnt/go_cache/build
+              container:
+                image: hub.zentao.net/ci/golang:1.22.1-alpine
+              #mount:
+              #  - name: cache
+              #    path: /mnt/go_cache
+              #    subPath: go
+              script:
+              - go install github.com/go-task/task/v3/cmd/task@latest
+              - task cross-build
+              - task download-gitfox-plugin
+              - ls -l bin/
+          - name: 构建镜像
+            type: run
+            spec:
+              container:
+                image: hub.zentao.net/ci/docker:24.0.8-cli
+              script:
+              - |
+                docker buildx create \
+                  --name=kube \
+                  --driver=kubernetes \
+                  --driver-opt=namespace=quickon-ci,replicas=5,nodeselector="node-role.kubernetes.io/ci=true",rootless=true,image=hub.zentao.net/ci/moby-buildkit:buildx-stable-1-rootless,qemu.install=true,qemu.image=hub.zentao.net/ci/binfmt:qemu-v8.1.5
+              - docker buildx use kube
+              - docker login -u ${{ secrets.get("zentao-registry-docker-username") }} -p ${{ secrets.get("zentao-registry-docker-password") }} hub.zentao.net
+              - docker buildx build -f Dockerfile.simple --push --pull --platform linux/amd64 --build-arg 'MIRROR=true' -t "${APP_IMAGE}" .
+          - name: 消息通知
+            type: plugin
+            spec:
+              inputs:
+                debug: true
+                custom: true
+                token: ${{ secrets.get("xuan_token") }}
+                caller: zenci
+                api: ${{ secrets.get("xuan_api") }}
+                title: GitFox 构建完成
+                content: "镜像：{{.APP_IMAGE}}"
+                url: ${GITFOX_BUILD_LINK}
+#                users:
+#                  "0": xuanbot
+                groups:
+                  "0": 31a0008b-6e3e-4b7f-9b7b-396a46b1f8f4
+              name: gitfox-xuanim-plugin

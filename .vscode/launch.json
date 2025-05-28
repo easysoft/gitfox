@@ -5,20 +5,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Harness",
+            "name": "Gitfox",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "buildFlags": "-tags=harness",
-            "program": "cmd/gitness",
-            "args": ["server", "../../.harness.env"]
-        },
-        {
-            "name": "Standalone",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "cmd/gitness",
+            "buildFlags": "",
+            "program": "cmd/gitfox",
             "args": ["server", "../../.local.env"]
         }
     ]

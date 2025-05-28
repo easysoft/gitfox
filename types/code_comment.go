@@ -1,24 +1,34 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package types
 
 type CodeComment struct {
-	ID      int64 `db:"pullreq_activity_id"`
-	Version int64 `db:"pullreq_activity_version"`
-	Updated int64 `db:"pullreq_activity_updated"`
+	ID      int64 `db:"pullreq_activity_id"          gorm:"column:pullreq_activity_id"`
+	Version int64 `db:"pullreq_activity_version"     gorm:"column:pullreq_activity_version"`
+	Updated int64 `db:"pullreq_activity_updated"     gorm:"column:pullreq_activity_updated"`
 
 	CodeCommentFields
 }
 
 type CodeCommentFields struct {
-	Outdated     bool   `db:"pullreq_activity_outdated" json:"outdated"`
-	MergeBaseSHA string `db:"pullreq_activity_code_comment_merge_base_sha" json:"merge_base_sha"`
-	SourceSHA    string `db:"pullreq_activity_code_comment_source_sha" json:"source_sha"`
-	Path         string `db:"pullreq_activity_code_comment_path" json:"path"`
-	LineNew      int    `db:"pullreq_activity_code_comment_line_new" json:"line_new"`
-	SpanNew      int    `db:"pullreq_activity_code_comment_span_new" json:"span_new"`
-	LineOld      int    `db:"pullreq_activity_code_comment_line_old" json:"line_old"`
-	SpanOld      int    `db:"pullreq_activity_code_comment_span_old" json:"span_old"`
+	Outdated     bool   `db:"pullreq_activity_outdated"                    gorm:"column:pullreq_activity_outdated"  json:"outdated"`
+	MergeBaseSHA string `db:"pullreq_activity_code_comment_merge_base_sha" gorm:"column:pullreq_activity_code_comment_merge_base_sha"  json:"merge_base_sha"`
+	SourceSHA    string `db:"pullreq_activity_code_comment_source_sha"     gorm:"column:pullreq_activity_code_comment_source_sha"  json:"source_sha"`
+	Path         string `db:"pullreq_activity_code_comment_path"           gorm:"column:pullreq_activity_code_comment_path"  json:"path"`
+	LineNew      int    `db:"pullreq_activity_code_comment_line_new"       gorm:"column:pullreq_activity_code_comment_line_new"  json:"line_new"`
+	SpanNew      int    `db:"pullreq_activity_code_comment_span_new"       gorm:"column:pullreq_activity_code_comment_span_new"  json:"span_new"`
+	LineOld      int    `db:"pullreq_activity_code_comment_line_old"       gorm:"column:pullreq_activity_code_comment_line_old"  json:"line_old"`
+	SpanOld      int    `db:"pullreq_activity_code_comment_span_old"       gorm:"column:pullreq_activity_code_comment_span_old"  json:"span_old"`
 }

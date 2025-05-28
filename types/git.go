@@ -1,13 +1,24 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package types
 
 import (
 	"time"
 
-	"github.com/harness/gitness/types/enum"
+	gitenum "github.com/easysoft/gitfox/git/enum"
+	"github.com/easysoft/gitfox/types/enum"
 )
 
 const NilSHA = "0000000000000000000000000000000000000000"
@@ -21,20 +32,33 @@ type PaginationFilter struct {
 // CommitFilter stores commit query parameters.
 type CommitFilter struct {
 	PaginationFilter
-	After     string `json:"after"`
-	Path      string `json:"path"`
-	Since     int64  `json:"since"`
-	Until     int64  `json:"until"`
-	Committer string `json:"committer"`
+	After        string  `json:"after"`
+	Path         string  `json:"path"`
+	Since        int64   `json:"since"`
+	Until        int64   `json:"until"`
+	Committer    string  `json:"committer"`
+	CommitterIDs []int64 `json:"committer_ids"`
+	Author       string  `json:"author"`
+	AuthorIDs    []int64 `json:"author_ids"`
+	IncludeStats bool    `json:"include_stats"`
+}
+
+type BranchMetadataOptions struct {
+	IncludeChecks   bool `json:"include_checks"`
+	IncludeRules    bool `json:"include_rules"`
+	IncludePullReqs bool `json:"include_pullreqs"`
+	MaxDivergence   int  `json:"max_divergence"`
 }
 
 // BranchFilter stores branch query parameters.
 type BranchFilter struct {
-	Query string                `json:"query"`
-	Sort  enum.BranchSortOption `json:"sort"`
-	Order enum.Order            `json:"order"`
-	Page  int                   `json:"page"`
-	Size  int                   `json:"size"`
+	Query         string                `json:"query"`
+	Sort          enum.BranchSortOption `json:"sort"`
+	Order         enum.Order            `json:"order"`
+	Page          int                   `json:"page"`
+	Size          int                   `json:"size"`
+	IncludeCommit bool                  `json:"include_commit"`
+	BranchMetadataOptions
 }
 
 // TagFilter stores commit tag query parameters.
@@ -46,12 +70,32 @@ type TagFilter struct {
 	Size  int                `json:"size"`
 }
 
+type ChangeStats struct {
+	Insertions int64 `json:"insertions"`
+	Deletions  int64 `json:"deletions"`
+	Changes    int64 `json:"changes"`
+}
+
+type CommitFileStats struct {
+	Path    string                 `json:"path"`
+	OldPath string                 `json:"old_path,omitempty"`
+	Status  gitenum.FileDiffStatus `json:"status"`
+	ChangeStats
+}
+
+type CommitStats struct {
+	Total ChangeStats       `json:"total,omitempty"`
+	Files []CommitFileStats `json:"files,omitempty"`
+}
+
 type Commit struct {
-	SHA       string    `json:"sha"`
-	Title     string    `json:"title"`
-	Message   string    `json:"message"`
-	Author    Signature `json:"author"`
-	Committer Signature `json:"committer"`
+	SHA        string       `json:"sha"`
+	ParentSHAs []string     `json:"parent_shas,omitempty"`
+	Title      string       `json:"title"`
+	Message    string       `json:"message"`
+	Author     Signature    `json:"author"`
+	Committer  Signature    `json:"committer"`
+	Stats      *CommitStats `json:"stats,omitempty"`
 }
 
 type Signature struct {
@@ -74,4 +118,18 @@ type RenameDetails struct {
 type ListCommitResponse struct {
 	Commits       []Commit        `json:"commits"`
 	RenameDetails []RenameDetails `json:"rename_details"`
+	TotalCommits  int             `json:"total_commits,omitempty"`
+}
+
+type CommitCount struct {
+	Date   string `json:"date"`
+	Author string `json:"author"`
+	CommitCountData
+}
+
+type CommitCountData struct {
+	Commits   int `json:"commits"`
+	Additions int `json:"additions"`
+	Deletions int `json:"deletions"`
+	Changes   int `json:"changes"`
 }

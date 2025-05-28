@@ -1,24 +1,48 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import React, { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   ButtonVariation,
-  Color,
   Container,
   FlexExpander,
-  Icon,
   Layout,
   Text,
   TextInput,
   VisualYamlSelectedView,
   VisualYamlToggle
-} from '@harness/uicore'
+} from '@harnessio/uicore'
+import { Icon } from '@harnessio/icons'
+import { Color } from '@harnessio/design-system'
 import { Link, useHistory } from 'react-router-dom'
 import { Breadcrumbs, IBreadcrumbProps } from '@blueprintjs/core'
 import cx from 'classnames'
 import { SourceCodeEditor } from 'components/SourceCodeEditor/SourceCodeEditor'
 import type { RepoFileContent } from 'services/code'
 import { useAppContext } from 'AppContext'
-import { decodeGitContent, GitCommitAction, GitContentType, GitInfoProps, isDir, makeDiffRefs } from 'utils/GitUtils'
+import {
+  normalizeGitRef,
+  decodeGitContent,
+  GitCommitAction,
+  GitContentType,
+  GitInfoProps,
+  isDir,
+  makeDiffRefs
+} from 'utils/GitUtils'
 import { useStrings } from 'framework/strings'
 import { filenameToLanguage, FILE_SEPERATOR } from 'utils/Utils'
 import { useGetResourceContent } from 'hooks/useGetResourceContent'
@@ -54,7 +78,7 @@ function Editor({ resourceContent, repoMetadata, gitRef, resourcePath, isReposit
   )
   const { data: folderContent, refetch: verifyFolder } = useGetResourceContent({
     repoMetadata,
-    gitRef,
+    gitRef: normalizeGitRef(gitRef) as string,
     resourcePath: fileResourcePath,
     includeCommit: false,
     lazy: true
@@ -147,7 +171,7 @@ function Editor({ resourceContent, repoMetadata, gitRef, resourcePath, isReposit
   return (
     <Container className={css.container}>
       <Layout.Horizontal className={css.heading}>
-        <Container style={{ maxWidth: 'calc(100vw - 800px)' }}>
+        <Container style={{ maxWidth: 'calc(var(--page-container-width) - 300px)' }}>
           <Layout.Horizontal spacing="small" className={css.path}>
             <Link to={routes.toCODERepository({ repoPath: repoMetadata.path as string, gitRef })}>
               <Icon name="code-folder" padding={{ right: 'xsmall' }} />

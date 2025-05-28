@@ -1,3 +1,19 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 .container {
   .table {
     background-color: var(--white) !important;
@@ -43,4 +59,63 @@
 .refreshIcon {
   padding-left: var(--spacing-xsmall) !important;
   padding-right: var(--spacing-xsmall);
+}
+
+.fileButton {
+  svg {
+    > path:first-child {
+      fill: unset !important;
+    }
+  }
+}
+
+.layout {
+  height: 22px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--grey-200);
+  background-color: var(--grey-50) !important;
+  border-radius: 4px;
+  padding-left: var(--spacing-small) !important;
+
+  &.noCopy {
+    padding-right: var(--spacing-small) !important;
+  }
+
+  a span {
+    font-size: 13px !important;
+    color: var(--primary-7);
+    font-family: var(--font-family-mono) !important;
+  }
+
+  span#commitFileButton {
+    --button-height: 22px !important;
+    border-radius: 0 !important;
+    border-right: 1px solid var(--grey-200) !important;
+    padding-right: 4px !important;
+    padding-bottom: 2px !important ;
+    cursor: pointer;
+  }
+  button#commitRepoButton {
+    padding-bottom: 2px !important;
+    padding-right: 4px !important;
+  }
+}
+
+.historyBtnLayout {
+  height: 22px;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--grey-200);
+  background-color: var(--grey-50) !important;
+  border-radius: 4px;
+  padding: 0 var(--spacing-xsmall) !important;
+  margin-left: var(--spacing-small) !important;
+}
+
+.popover {
+  z-index: 99999;
+  padding: var(--spacing-small) !important;
+  background: var(--primary-bg);
 }

@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package pubsub
 
@@ -24,14 +34,14 @@ func (f OptionFunc) Apply(config *Config) {
 // WithApp returns an option that set config app name.
 func WithApp(value string) Option {
 	return OptionFunc(func(m *Config) {
-		m.app = value
+		m.App = value
 	})
 }
 
 // WithNamespace returns an option that set config namespace.
 func WithNamespace(value string) Option {
 	return OptionFunc(func(m *Config) {
-		m.namespace = value
+		m.Namespace = value
 	})
 }
 
@@ -41,7 +51,7 @@ func WithNamespace(value string) Option {
 // To disable health check, use zero interval.
 func WithHealthCheckInterval(value time.Duration) Option {
 	return OptionFunc(func(m *Config) {
-		m.healthInterval = value
+		m.HealthInterval = value
 	})
 }
 
@@ -49,7 +59,7 @@ func WithHealthCheckInterval(value time.Duration) Option {
 // the message is dropped.
 func WithSendTimeout(value time.Duration) Option {
 	return OptionFunc(func(m *Config) {
-		m.sendTimeout = value
+		m.SendTimeout = value
 	})
 }
 
@@ -57,7 +67,7 @@ func WithSendTimeout(value time.Duration) Option {
 // incoming messages.
 func WithSize(value int) Option {
 	return OptionFunc(func(m *Config) {
-		m.channelSize = value
+		m.ChannelSize = value
 	})
 }
 

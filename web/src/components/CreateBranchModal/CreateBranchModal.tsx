@@ -1,8 +1,17 @@
 /*
- * Copyright 2021 Harness Inc. All rights reserved.
- * Use of this source code is governed by the PolyForm Shield 1.0.0 license
- * that can be found in the licenses directory at the root of this repository, also available at
- * https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt.
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import React, { useCallback, useState } from 'react'
@@ -14,25 +23,29 @@ import {
   Container,
   Layout,
   FlexExpander,
-  Icon,
   Formik,
   FormikForm,
   Heading,
   useToaster,
   FormInput,
   Label,
-  ButtonVariation
-} from '@harness/uicore'
-import { FontVariation } from '@harness/design-system'
+  Text,
+  ButtonVariation,
+  StringSubstitute
+} from '@harnessio/uicore'
+import { Icon } from '@harnessio/icons'
+import { FontVariation, Color } from '@harnessio/design-system'
 import { useMutate } from 'restful-react'
 import { get } from 'lodash-es'
-import { useModalHook } from '@harness/use-modal'
+import { Render } from 'react-jsx-match'
+import { useModalHook } from 'hooks/useModalHook'
 import { useStrings } from 'framework/strings'
 import { getErrorMessage, permissionProps } from 'utils/Utils'
-import { CodeIcon, GitInfoProps, isGitBranchNameValid } from 'utils/GitUtils'
+import { GitInfoProps, normalizeGitRef, isGitBranchNameValid } from 'utils/GitUtils'
 import { BranchTagSelect } from 'components/BranchTagSelect/BranchTagSelect'
-import type { RepoBranch } from 'services/code'
+import type { TypesBranchExtended } from 'services/code'
 import { useGetSpaceParam } from 'hooks/useGetSpaceParam'
+import { useRuleViolationCheck } from 'hooks/useRuleViolationCheck'
 import { useAppContext } from 'AppContext'
 import css from './CreateBranchModal.module.scss'
 
@@ -44,12 +57,14 @@ interface FormData {
 interface UseCreateBranchModalProps extends Pick<GitInfoProps, 'repoMetadata'> {
   suggestedBranchName?: string
   suggestedSourceBranch?: string
-  onSuccess: (data: RepoBranch) => void
+  onSuccess: (data: TypesBranchExtended) => void
   showSuccessMessage?: boolean
+  showBranchTag?: boolean
+  refIsATag?: boolean
 }
 
 interface CreateBranchModalButtonProps extends Omit<ButtonProps, 'onClick'>, UseCreateBranchModalProps {
-  onSuccess: (data: RepoBranch) => void
+  onSuccess: (data: TypesBranchExtended) => void
   showSuccessMessage?: boolean
 }
 
@@ -58,14 +73,17 @@ export function useCreateBranchModal({
   suggestedSourceBranch = '',
   onSuccess,
   repoMetadata,
-  showSuccessMessage
+  showSuccessMessage,
+  showBranchTag = true,
+  refIsATag = false
 }: UseCreateBranchModalProps) {
   const [branchName, setBranchName] = useState(suggestedBranchName)
   const ModalComponent: React.FC = () => {
     const { getString } = useStrings()
     const [sourceBranch, setSourceBranch] = useState(suggestedSourceBranch || (repoMetadata.default_branch as string))
     const { showError, showSuccess } = useToaster()
-    const { mutate: createBranch, loading } = useMutate<RepoBranch>({
+    const { violation, bypassable, bypassed, setAllStates } = useRuleViolationCheck()
+    const { mutate: createBranch, loading } = useMutate<TypesBranchExtended>({
       verb: 'POST',
       path: `/api/v1/repos/${repoMetadata.path}/+/branches`
     })
@@ -74,20 +92,35 @@ export function useCreateBranchModal({
       try {
         createBranch({
           name,
-          target: sourceBranch
+          target: normalizeGitRef(refIsATag ? `refs/tags/${sourceBranch}` : sourceBranch),
+          bypass_rules: bypassed
         })
           .then(response => {
             hideModal()
             onSuccess(response)
             if (showSuccessMessage) {
-              showSuccess(getString('branchCreated', { branch: name }), 5000)
+              showSuccess(
+                <StringSubstitute
+                  str={getString('branchCreated')}
+                  vars={{
+                    branch: name
+                  }}
+                />,
+                5000
+              )
             }
           })
           .catch(_error => {
-            showError(getErrorMessage(_error), 0, 'failedToCreateBranch')
+            if (_error.status === 422) {
+              setAllStates({
+                violation: true,
+                bypassed: true,
+                bypassable: _error?.data?.violations[0]?.bypassable
+              })
+            } else showError(getErrorMessage(_error), 5000, 'failedToCreateBranch')
           })
       } catch (exception) {
-        showError(getErrorMessage(exception), 0, 'failedToCreateBranch')
+        showError(getErrorMessage(exception), 5000, 'failedToCreateBranch')
       }
     }
 
@@ -97,12 +130,12 @@ export function useCreateBranchModal({
         enforceFocus={false}
         onClose={hideModal}
         title={''}
-        style={{ width: 700, maxHeight: '95vh', overflow: 'auto' }}>
-        <Layout.Vertical padding={{ left: 'xxlarge' }} style={{ height: '100%' }} className={css.main}>
+        style={{ width: 585, maxHeight: '95vh', overflow: 'auto' }}>
+        <Layout.Vertical style={{ height: '100%' }} className={css.main}>
           <Heading className={css.title} font={{ variation: FontVariation.H3 }} margin={{ bottom: 'xlarge' }}>
-            <Icon name={CodeIcon.Branch} size={22} /> {getString('createABranch')}
+            {getString('createABranch')}
           </Heading>
-          <Container margin={{ right: 'xxlarge' }}>
+          <Container className={css.container}>
             <Formik<FormData>
               initialValues={{
                 name: branchName,
@@ -114,7 +147,7 @@ export function useCreateBranchModal({
                 name: yup
                   .string()
                   .trim()
-                  .required()
+                  .required(getString('validation.required', { name: getString('name') })) // GITFOX!
                   .test('valid-branch-name', getString('validation.gitBranchNameInvalid'), value => {
                     const val = value || ''
                     return !!val && isGitBranchNameValid(val)
@@ -126,44 +159,68 @@ export function useCreateBranchModal({
               <FormikForm>
                 <FormInput.Text
                   name="name"
-                  label={getString('branchName')}
-                  placeholder={getString('nameYourBranch')}
+                  label={getString('name')}
+                  placeholder={getString('enterBranchPlaceholder')}
                   tooltipProps={{
                     dataTooltipId: 'repositoryBranchTextField'
                   }}
                   inputGroup={{ autoFocus: true }}
+                  onChange={() => {
+                    setAllStates({ violation: false, bypassable: false, bypassed: false })
+                  }}
                 />
-                <Container margin={{ top: 'medium', bottom: 'medium' }}>
-                  <Label className={css.label}>{getString('branchSourceDesc')}</Label>
+                <Container margin={{ top: 'medium' }}>
+                  <Label className={css.label}>{getString('basedOn')}</Label>
                   {/* <Text className={css.branchSourceDesc}>{getString('branchSourceDesc')}</Text> */}
-                  <Layout.Horizontal spacing="medium" padding={{ top: 'xsmall' }}>
+                  <Layout.Horizontal className={css.selectContainer} padding={{ top: 'xsmall' }}>
                     <BranchTagSelect
+                      className={css.branchTagSelect}
                       repoMetadata={repoMetadata}
                       disableBranchCreation
                       disableViewAllBranches
-                      forBranchesOnly
-                      gitRef={sourceBranch}
+                      forBranchesOnly={showBranchTag}
+                      gitRef={refIsATag ? `refs/tags/${sourceBranch}` : sourceBranch}
                       onSelect={setSourceBranch}
+                      popoverClassname={css.popoverContainer}
                     />
-                    <FlexExpander />
                   </Layout.Horizontal>
                 </Container>
 
                 <Layout.Horizontal
                   spacing="small"
-                  padding={{ right: 'xxlarge', top: 'xxxlarge', bottom: 'large' }}
+                  padding={{ right: 'xxlarge', top: 'xxlarge', bottom: 'large' }}
                   style={{ alignItems: 'center' }}>
-                  <Button
-                    type="submit"
-                    text={getString('createBranch')}
-                    variation={ButtonVariation.PRIMARY}
-                    disabled={loading}
-                  />
+                  {!bypassable ? (
+                    <Button
+                      type="submit"
+                      text={getString('createBranch')}
+                      variation={ButtonVariation.PRIMARY}
+                      disabled={loading}
+                    />
+                  ) : (
+                    <Button
+                      intent={Intent.DANGER}
+                      disabled={loading}
+                      type="submit"
+                      variation={ButtonVariation.SECONDARY}
+                      text={getString('branchProtection.createBranchAlertBtn')}
+                    />
+                  )}
                   <Button text={getString('cancel')} variation={ButtonVariation.LINK} onClick={hideModal} />
                   <FlexExpander />
 
-                  {loading && <Icon intent={Intent.PRIMARY} name="spinner" size={16} />}
+                  {loading && <Icon intent={Intent.PRIMARY} name="steps-spinner" size={16} />}
                 </Layout.Horizontal>
+                <Render when={violation}>
+                  <Layout.Horizontal className={css.warningMessage}>
+                    <Icon intent={Intent.WARNING} name="danger-icon" size={16} />
+                    <Text font={{ variation: FontVariation.BODY2 }} color={Color.RED_800}>
+                      {bypassable
+                        ? getString('branchProtection.createBranchAlertText')
+                        : getString('branchProtection.createBranchBlockText')}
+                    </Text>
+                  </Layout.Horizontal>
+                </Render>
               </FormikForm>
             </Formik>
           </Container>
@@ -196,7 +253,7 @@ export const CreateBranchModalButton: React.FC<CreateBranchModalButtonProps> = (
   showSuccessMessage,
   ...props
 }) => {
-  const openModal = useCreateBranchModal({ repoMetadata, onSuccess, showSuccessMessage })
+  const openModal = useCreateBranchModal({ repoMetadata, onSuccess, showSuccessMessage, showBranchTag: false })
   const { standalone } = useAppContext()
   const { hooks } = useAppContext()
   const space = useGetSpaceParam()
@@ -204,7 +261,8 @@ export const CreateBranchModalButton: React.FC<CreateBranchModalButtonProps> = (
   const permPushResult = hooks?.usePermissionTranslate?.(
     {
       resource: {
-        resourceType: 'CODE_REPOSITORY'
+        resourceType: 'CODE_REPOSITORY',
+        resourceIdentifier: repoMetadata?.identifier as string
       },
       permissions: ['code_repo_push']
     },

@@ -1,0 +1,18 @@
+-- Copyright (c) 2023-2024 北京渠成软件有限公司(Beijing Qucheng Software Co., Ltd. www.qucheng.com) All rights reserved.
+-- Use of this source code is covered by the following dual licenses:
+-- (1) Z PUBLIC LICENSE 1.2 (ZPL 1.2)
+-- (2) Affero General Public License 3.0 (AGPL 3.0)
+-- license that can be found in the LICENSE file.
+
+ALTER TABLE spaces ADD COLUMN space_deleted BIGINT DEFAULT NULL;
+
+-- do nothing in mysql
+-- index on space_parent_id is enough for us
+# DROP INDEX spaces_parent_id;
+#
+# CREATE INDEX spaces_parent_id
+#     ON spaces(space_parent_id);
+#
+# CREATE INDEX spaces_deleted_parent_id
+#     ON spaces(space_deleted, space_parent_id)
+#     WHERE space_deleted IS NOT NULL;

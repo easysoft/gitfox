@@ -1,4 +1,20 @@
 /*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
  * This file contains utilities for testing.
  */
 import React from 'react'
@@ -7,7 +23,6 @@ import { queryByAttribute } from '@testing-library/react'
 import { compile } from 'path-to-regexp'
 import { createMemoryHistory } from 'history'
 import { Router, Route, Switch, useLocation, useHistory } from 'react-router-dom'
-import { ModalProvider } from '@harness/use-modal'
 import qs from 'qs'
 import { enableMapSet } from 'immer'
 import { StringsContext } from 'framework/strings'
@@ -108,20 +123,18 @@ export const TestWrapper: React.FC<TestWrapperProps> = props => {
   return (
     <StringsContext.Provider value={{ data: stringsData as UnknownType, getString }}>
       <Router history={history}>
-        <ModalProvider>
-          <RestfulProvider base="/">
-            <BrowserView enable={props.enableBrowserView}>
-              <Switch>
-                <Route exact path={path}>
-                  {props.children}
-                </Route>
-                <Route>
-                  <CurrentLocation />
-                </Route>
-              </Switch>
-            </BrowserView>
-          </RestfulProvider>
-        </ModalProvider>
+        <RestfulProvider base="/">
+          <BrowserView enable={props.enableBrowserView}>
+            <Switch>
+              <Route exact path={path}>
+                {props.children}
+              </Route>
+              <Route>
+                <CurrentLocation />
+              </Route>
+            </Switch>
+          </BrowserView>
+        </RestfulProvider>
       </Router>
     </StringsContext.Provider>
   )

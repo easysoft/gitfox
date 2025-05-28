@@ -1,89 +1,68 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 const path = require('path')
-const util = require('util')
-const fs = require('fs')
+
 require('dotenv').config()
 
 const { merge } = require('webpack-merge')
-const ForkTsCheckerWebpackPlugin = require('fork-ts-checker-webpack-plugin')
-const MiniCssExtractPlugin = require('mini-css-extract-plugin')
-const HTMLWebpackPlugin = require('html-webpack-plugin')
-const {
-  DefinePlugin,
-  WatchIgnorePlugin,
-  container: { ModuleFederationPlugin }
-} = require('webpack')
 const commonConfig = require('./webpack.common')
 
-const baseUrl = process.env.BASE_URL ?? 'https://qa.harness.io/gateway'
-const targetLocalHost = JSON.parse(process.env.TARGET_LOCALHOST || 'true')
+const API_URL = process.env.API_URL ?? 'http://localhost:3000'
+const HOST = 'localhost'
+const PORT = process.env.PORT ?? 3020
+const STANDALONE = process.env.STANDALONE === 'true'
+const CONTEXT = process.cwd()
+const prodConfig = require('./webpack.prod')
 
-const ON_PREM = `${process.env.ON_PREM}` === 'true'
+console.info(`Starting development build... http://${HOST}:${PORT}`)
+console.info('Environment variables:')
+console.table({ STANDALONE, HOST, PORT, API_URL })
 
 const devConfig = {
   mode: 'development',
-  entry: './src/index.tsx',
+  entry: path.resolve(CONTEXT, '/src/index.tsx'),
   devtool: 'cheap-module-source-map',
   cache: { type: 'filesystem' },
   output: {
-    filename: '[name].js',
-    chunkFilename: '[name].[id].js'
+    publicPath: STANDALONE ? '/' : 'auto'
   },
+  optimization: STANDALONE
+    ? {
+        runtimeChunk: 'single',
+        splitChunks: prodConfig.optimization.splitChunks
+      }
+    : {},
   devServer: {
     hot: true,
-    host: 'localhost',
-    historyApiFallback: true,
-    port: 3020,
+    host: HOST,
+    historyApiFallback: {
+      disableDotRule: true
+    },
+    port: PORT,
     proxy: {
       '/api': {
-        target: targetLocalHost ? 'http://localhost:3000' : baseUrl,
+        target: API_URL,
         logLevel: 'debug',
         secure: false,
         changeOrigin: true
       }
-    }
-  },
-  plugins: [
-    new MiniCssExtractPlugin({
-      filename: '[name].css',
-      chunkFilename: '[name].[id].css',
-      ignoreOrder: true
-    }),
-    new HTMLWebpackPlugin({
-      template: 'src/index.html',
-      filename: 'index.html',
-      minify: false,
-      templateParameters: {
-        __DEV__: true,
-        __ON_PREM__: ON_PREM
-      }
-    }),
-    new DefinePlugin({
-      'process.env': '{}', // required for @blueprintjs/core
-      __DEV__: true,
-      __ENABLE_CDN__: false
-    })
-    // new ForkTsCheckerWebpackPlugin()
-    // new WatchIgnorePlugin({
-    //   paths: [/node_modules(?!\/@wings-software)/, /\.d\.ts$/]
-    // }),
-  ],
-  module: {
-    rules: [
-      {
-        test: /\.md$/,
-        use: [
-          {
-            loader: 'raw-loader',
-            options: {
-              esModule: false
-            }
-          }
-        ]
-      }
-    ]
+    },
+    compress: false
   }
 }
-
-console.table({ baseUrl, targetLocalHost })
 
 module.exports = merge(commonConfig, devConfig)

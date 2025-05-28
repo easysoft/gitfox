@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package events
 
@@ -28,7 +38,7 @@ type ReaderFactory[R Reader] struct {
 }
 
 // Launch launches a new reader for the provided group and client name.
-// The setup method should be used to register the differents events the reader will act on.
+// The setup method should be used to register the different events the reader will act on.
 // To stop the reader and cleanup its resources the returned ReaderCanceler can be used.
 // The reader also cancels automatically when the provided context is canceled.
 // NOTE: Do not setup the reader outside of the setup method!
@@ -43,9 +53,9 @@ func (f *ReaderFactory[R]) Launch(ctx context.Context,
 
 	// setup ctx with copied logger that has extra fields set
 	log := log.Ctx(ctx).With().
-		Str("events_category", f.category).
-		Str("events_group_name", groupName).
-		Str("events_reader_name", readerName).
+		Str("events.category", f.category).
+		Str("events.group_name", groupName).
+		Str("events.reader_name", readerName).
 		Logger()
 
 	// create new stream consumer using factory method
@@ -191,8 +201,8 @@ func ReaderRegisterEvent[T interface{}](reader *GenericReader,
 
 			// update ctx with event type for proper logging
 			log := log.Ctx(ctx).With().
-				Str("events_type", string(eventType)).
-				Str("events_id", event.ID).
+				Str("events.type", string(eventType)).
+				Str("events.id", event.ID).
 				Logger()
 			ctx = log.WithContext(ctx)
 

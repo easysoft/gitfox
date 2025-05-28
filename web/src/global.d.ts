@@ -1,6 +1,21 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare const __DEV__: boolean
-declare const __ON_PREM__: booelan
 
 declare module '*.png' {
   const value: string
@@ -13,6 +28,12 @@ declare module '*.jpg' {
 }
 
 declare module '*.svg' {
+  import React from 'react'
+  const SVG: React.VFC<React.SVGProps<SVGSVGElement>>
+  export default SVG
+}
+
+declare module '*.svg?url' {
   const value: string
   export default value
 }
@@ -46,13 +67,14 @@ declare interface Window {
   apiUrl: string
   harnessNameSpace: string
   bugsnagClient?: any
+  STRIP_CDE_PREFIX?: boolean
   STRIP_CODE_PREFIX?: boolean
+  Sanitizer: any
+  publicAccessOnGitfox: boolean
 }
 
 declare const __ENABLE_CDN__: boolean
 declare let __webpack_public_path__: string
-
-declare const monaco: any
 
 declare module '*.scss'
 
@@ -67,9 +89,24 @@ declare module 'lang-map' {
   export default languages
 }
 
-declare module 'react-join' {
-  const ReactJoin: React.FC<{ separator: JSX.Element }>
-  export default ReactJoin
+declare type Nullable<T> = T | undefined | null
+
+declare module 'monaco-editor/esm/vs/editor/common/services/languageFeatures.js' {
+  export const ILanguageFeaturesService: { documentSymbolProvider: unknown }
 }
 
-declare type Nullable<T> = T | undefined | null
+declare module 'monaco-editor/esm/vs/editor/contrib/documentSymbols/browser/outlineModel.js' {
+  import type { editor, languages } from 'monaco-editor'
+
+  export abstract class OutlineModel {
+    static create(registry: unknown, model: editor.ITextModel): Promise<OutlineModel>
+
+    asListOfDocumentSymbols(): languages.DocumentSymbol[]
+  }
+}
+
+declare module 'monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js' {
+  export const StandaloneServices: {
+    get: (id: unknown) => { documentSymbolProvider: unknown }
+  }
+}

@@ -1,6 +1,1 @@
-node_modules
-dist
-coverage
-.env
-yarn-error*
-.DS_Store
+src/**/*.scss.d.ts

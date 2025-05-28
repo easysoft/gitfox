@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package pubsub
 
@@ -27,11 +37,11 @@ type InMemory struct {
 // NewInMemory create an instance of memory pubsub implementation.
 func NewInMemory(options ...Option) *InMemory {
 	config := Config{
-		app:            "app",
-		namespace:      "default",
-		healthInterval: 3 * time.Second,
-		sendTimeout:    60,
-		channelSize:    100,
+		App:            "app",
+		Namespace:      "default",
+		HealthInterval: 3 * time.Second,
+		SendTimeout:    60,
+		ChannelSize:    100,
 	}
 
 	for _, f := range options {
@@ -55,10 +65,10 @@ func (r *InMemory) Subscribe(
 
 	config := SubscribeConfig{
 		topics:      make([]string, 0, 8),
-		app:         r.config.app,
-		namespace:   r.config.namespace,
-		sendTimeout: r.config.sendTimeout,
-		channelSize: r.config.channelSize,
+		app:         r.config.App,
+		namespace:   r.config.Namespace,
+		sendTimeout: r.config.SendTimeout,
+		channelSize: r.config.ChannelSize,
 	}
 
 	for _, f := range options {
@@ -90,17 +100,20 @@ func (r *InMemory) Publish(ctx context.Context, topic string, payload []byte, op
 		return nil
 	}
 	pubConfig := PublishConfig{
-		app:       r.config.app,
-		namespace: r.config.namespace,
+		app:       r.config.App,
+		namespace: r.config.Namespace,
 	}
 	for _, f := range opts {
 		f.Apply(&pubConfig)
 	}
 
 	topic = formatTopic(pubConfig.app, pubConfig.namespace, topic)
+	wg := sync.WaitGroup{}
 	for _, sub := range r.registry {
 		if slices.Contains(sub.topics, topic) && !sub.isClosed() {
+			wg.Add(1)
 			go func(subscriber *inMemorySubscriber) {
+				defer wg.Done()
 				// timer is based on subscriber data
 				t := time.NewTimer(subscriber.config.sendTimeout)
 				defer t.Stop()
@@ -118,10 +131,14 @@ func (r *InMemory) Publish(ctx context.Context, topic string, payload []byte, op
 		}
 	}
 
+	// Wait for all subscribers to complete
+	// Otherwise, we might fail notifying some subscribers due to context completion.
+	wg.Wait()
+
 	return nil
 }
 
-func (r *InMemory) Close(ctx context.Context) error {
+func (r *InMemory) Close(_ context.Context) error {
 	for _, subscriber := range r.registry {
 		if err := subscriber.Close(); err != nil {
 			return err
@@ -158,7 +175,7 @@ func (s *inMemorySubscriber) start(ctx context.Context) {
 	}
 }
 
-func (s *inMemorySubscriber) Subscribe(ctx context.Context, topics ...string) error {
+func (s *inMemorySubscriber) Subscribe(_ context.Context, topics ...string) error {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	topics = s.formatTopics(topics...)
@@ -171,7 +188,7 @@ func (s *inMemorySubscriber) Subscribe(ctx context.Context, topics ...string) er
 	return nil
 }
 
-func (s *inMemorySubscriber) Unsubscribe(ctx context.Context, topics ...string) error {
+func (s *inMemorySubscriber) Unsubscribe(_ context.Context, topics ...string) error {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	topics = s.formatTopics(topics...)

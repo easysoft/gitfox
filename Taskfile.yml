@@ -1,60 +1,167 @@
+# https://taskfile.dev
+
 version: '3'
 
+vars:
+  GOPROXY: 'https://goproxy.cn,direct'
+  GOSUMDB: sum.golang.google.cn
+  GIT_BRANCH: $(git branch -r --contains | head -1 | sed -E -e "s%(HEAD ->|origin|upstream)/?%%g" | sed 's|/|-|g' | xargs)
+  GIT_COMMIT: $(git rev-parse --short HEAD || echo "abcdefgh")
+  BUILD_DATE: $(date +%Y%m%d%H)
+  BUILD_RELEASE: $(cat version.txt || echo "1.0.0")
+  BIN_DIR: $(pwd)/bin
+  GOOS: $(go env GOOS)
+  GOARCH: $(go env GOARCH)
+  VERSION_PKG: github.com/easysoft/gitfox/pkg/util/common
+  LDFLAGS: "-w -s \
+    -X '{{.VERSION_PKG}}.Version={{.BUILD_RELEASE}}' \
+    -X '{{.VERSION_PKG}}.BuildDate={{.BUILD_DATE}}' \
+    -X '{{.VERSION_PKG}}.GitBranch={{.GIT_BRANCH}}' \
+    -X '{{.VERSION_PKG}}.GitCommitHash={{.GIT_COMMIT}}'"
+
 tasks:
-  test:
-    cmds:
-    - go test -v -cover ./...
 
-  # postgres tests are currently failing due to issues
-  # with the seed.sql file.
-  test-postgres:
-    env:
-      DATABASE_DRIVER: postgres
-      DATABASE_CONFIG: host=localhost user=postgres password=postgres dbname=postgres sslmode=disable
-      GO111MODULE: 'on'
+  gencopyright:
+    desc: generate code license
     cmds:
-      - cmd: docker kill postgres
-        ignore_error: true
-        silent: false
-      - silent: false
-        cmd: >
-          docker run
-          -p 5432:5432
-          --env POSTGRES_PASSWORD=postgres
-          --env POSTGRES_USER=postgres
-          --name postgres
-          --detach
-          --rm
-          postgres:9-alpine
-      - cmd: go test -v -cover github.com/harness/gitness/internal/store/database
-      - cmd: docker kill postgres
-        silent: true
+      - go install github.com/google/addlicense@latest
+      - hack/scripts/gencopyright.sh
 
-  setup:
+  gofmt:
     cmds:
-    - cd web; npm install
-    - cd web; npm run build
-    - go generate ./...
-    - go build
+      - go install golang.org/x/tools/cmd/goimports@latest
+      - gofmt -s -w .
+      - goimports -w .
 
-  teardown:
+  govulncheck:
+    desc: vulnerability detection
     cmds:
-    - rm -rf release
-    - rm -rf web/.cache
-    - rm -rf web/dist/files
-    - rm -rf web/node_modules
-    - rm -rf web/.env.development.local
-    - rm -rf web/swagger.yaml
-    - rm -rf gitness
-    - rm -rf database.sqlite3
-    - rm -rf .env
+      - go install golang.org/x/vuln/cmd/govulncheck@v1.1.1
+      - govulncheck ./...
 
-  docker-build:
+  golint:
     cmds:
-    - docker build -t harness/gitness:linux-amd64 -f docker/Dockerfile .
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2
+      - golangci-lint run -v ./...
 
-  docker-build-all:
+  gci:
     cmds:
-    - docker build -t harness/gitness:linux-amd64 -f docker/Dockerfile .
-    - docker build -t harness/gitness:linux-arm64 -f docker/Dockerfile.linux.arm64 .
-    - docker build -t harness/gitness:linux-arm   -f docker/Dockerfile.linux.arm .
+      - go install github.com/daixiang0/gci@v0.13.1
+      - gci write --skip-generated --custom-order -s standard -s "prefix(github.com/easysoft/gitfox)" -s default -s blank -s dot .
+
+  devinit:
+    desc: Install git hooks to perform pre-commit checks
+    cmds:
+      - git config core.hooksPath .githooks
+      # - git config commit.template .gitmessage
+
+  gomod:
+    cmds:
+      - go mod tidy
+
+  lint:
+    desc: lint code
+    cmds:
+      - task: gomod
+      - task: gofmt
+      - task: gci
+      - task: golint
+      # - task: govulncheck
+
+  fmt:
+    desc: format code
+    run: once
+    cmds:
+      - task: gencopyright
+      - task: lint
+
+  # swag:
+  #   desc: generate swagger doc
+  #   cmds:
+  #     - go install github.com/swaggo/swag/cmd/swag@latest
+  #     - ./hack/scripts/gendocs.sh "{{.GIT_BRANCH}}-{{.GIT_COMMIT}}-{{.BUILD_DATE}}"
+
+  build:
+    desc: build binary
+    deps:
+      - web
+    cmds:
+      - CGO_ENABLED=1 GOOS={{.GOOS}} GOARCH={{.GOARCH}} go build -o "{{.BIN_DIR}}/gitfox_{{.GOOS}}_{{.GOARCH}}" -ldflags "{{.LDFLAGS}}" ./cmd/gitfox
+
+  cross-build:
+    desc: cross build multi arch
+    cmds:
+      - CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags=nosqlite -o "{{.BIN_DIR}}/gitfox_linux_amd64" -ldflags "{{.LDFLAGS}}" ./cmd/gitfox
+#      - CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -tags=nosqlite -o "{{.BIN_DIR}}/gitfox_linux_arm64" -ldflags "{{.LDFLAGS}}" ./cmd/gitfox
+
+  config-local:
+    desc: try to create local config
+    run: once
+    cmds:
+      - cp .gitfox.env.sample .gitfox.env
+    status:
+      - test -f .gitfox.env
+
+  run-local:
+    desc: debug run
+    dotenv: [".gitfox.env"]
+    deps:
+      - config-local
+    cmds:
+      - CGO_ENABLED=1 go run -ldflags "{{.LDFLAGS}}" ./cmd/gitfox server
+
+  web-local:
+    desc: run web for devel
+    dir: web
+    cmds:
+      - yarn
+      - API_URL=http://127.0.0.1:3000 yarn dev-local
+
+  generate:
+    desc: generate code
+    cmds:
+      - ./scripts/wire/gitfox.sh
+
+  run:
+    desc: run binary
+    deps:
+      # - swag
+      - build
+    dotenv: [".gitfox.env"]
+    cmds:
+      - "{{.BIN_DIR}}/gitfox_{{.GOOS}}_{{.GOARCH}} server"
+
+  web:
+    desc: build web
+    run: once
+    dir: web
+    cmds:
+      # - cat package.json | jq '.version="'1.0.0-{{.GIT_BRANCH}}-{{.GIT_COMMIT}}-{{.BUILD_DATE}}'"' > package.json.new
+      # - mv package.json.new package.json
+      - yarn config set registry https://registry.npmmirror.com
+      - yarn && yarn build
+    status:
+      - test -f dist/index.html
+
+  clean:
+    run: once
+    desc: clean
+    cmds:
+      - rm -rf "{{.BIN_DIR}}/gitfox_{{.GOOS}}_{{.GOARCH}}"
+      - rm -rf web/dist
+
+  download-gitfox-plugin:
+    desc: download gitfox plugin
+    cmds:
+      - wget -O hack/ci-plugin/plugins.zip https://pkg.zentao.net/gitfox/20241024/plugins.zip
+
+  docker:
+    desc: build docker image
+    cmds:
+      - docker buildx build --pull --push --platform linux/amd64 -t hub.zentao.net/app/gitfox:{{.GIT_BRANCH}}-{{.GIT_COMMIT}}-{{.BUILD_DATE}} .
+
+  default:
+    cmds:
+      - task: clean
+      - task: web
+      - task: build

@@ -1,11 +1,21 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package types
 
 import (
-	"github.com/harness/gitness/types/enum"
+	"github.com/easysoft/gitfox/types/enum"
 )
 
 // PullReq represents a pull request.
@@ -14,10 +24,11 @@ type PullReq struct {
 	Version int64 `json:"-"` // not returned, it's an internal field
 	Number  int64 `json:"number"`
 
-	CreatedBy int64 `json:"-"` // not returned, because the author info is in the Author field
-	Created   int64 `json:"created"`
-	Updated   int64 `json:"-"` // not returned, it's updated by the server internally. Clients should use EditedAt.
-	Edited    int64 `json:"edited"`
+	CreatedBy int64  `json:"-"` // not returned, because the author info is in the Author field
+	Created   int64  `json:"created"`
+	Updated   int64  `json:"updated"`
+	Edited    int64  `json:"edited"` // TODO: Remove. Field Edited is equal to Updated
+	Closed    *int64 `json:"closed,omitempty"`
 
 	State   enum.PullReqState `json:"state"`
 	IsDraft bool              `json:"is_draft"`
@@ -40,21 +51,94 @@ type PullReq struct {
 	Merged      *int64            `json:"merged"`
 	MergeMethod *enum.MergeMethod `json:"merge_method"`
 
-	MergeCheckStatus enum.MergeCheckStatus `json:"merge_check_status"`
-	MergeTargetSHA   *string               `json:"merge_target_sha"`
-	MergeBaseSHA     string                `json:"merge_base_sha"`
-	MergeSHA         *string               `json:"merge_sha"`
-	MergeConflicts   *string               `json:"merge_conflicts,omitempty"`
+	MergeTargetSHA *string `json:"merge_target_sha"`
+	MergeBaseSHA   string  `json:"merge_base_sha"`
+	MergeSHA       *string `json:"-"` // TODO: either remove or ensure it's being set (merge dry-run)
+
+	MergeCheckStatus  enum.MergeCheckStatus `json:"merge_check_status"`
+	MergeConflicts    []string              `json:"merge_conflicts,omitempty"`
+	RebaseCheckStatus enum.MergeCheckStatus `json:"rebase_check_status"`
+	RebaseConflicts   []string              `json:"rebase_conflicts,omitempty"`
 
 	Author PrincipalInfo  `json:"author"`
 	Merger *PrincipalInfo `json:"merger"`
 	Stats  PullReqStats   `json:"stats"`
+
+	WebURL string `json:"web_url"`
+
+	Flow enum.PullRequestFlow `json:"flow"`
+
+	Labels       []*LabelPullReqAssignmentInfo `json:"labels,omitempty"`
+	CheckSummary *CheckCountSummary            `json:"check_summary,omitempty"`
+	Rules        []RuleInfo                    `json:"rules,omitempty"`
+}
+
+func (pr *PullReq) UpdateMergeOutcome(method enum.MergeMethod, conflictFiles []string) {
+	switch method {
+	case enum.MergeMethodMerge, enum.MergeMethodSquash:
+		if len(conflictFiles) > 0 {
+			pr.MergeCheckStatus = enum.MergeCheckStatusConflict
+			pr.MergeConflicts = conflictFiles
+		} else {
+			pr.MergeCheckStatus = enum.MergeCheckStatusMergeable
+			pr.MergeConflicts = nil
+		}
+	case enum.MergeMethodRebase:
+		if len(conflictFiles) > 0 {
+			pr.RebaseCheckStatus = enum.MergeCheckStatusConflict
+			pr.RebaseConflicts = conflictFiles
+		} else {
+			pr.RebaseCheckStatus = enum.MergeCheckStatusMergeable
+			pr.RebaseConflicts = nil
+		}
+	case enum.MergeMethodFastForward:
+		// fast-forward merge can't have conflicts
+	}
+}
+
+func (pr *PullReq) MarkAsMergeUnchecked() {
+	pr.MergeCheckStatus = enum.MergeCheckStatusUnchecked
+	pr.MergeConflicts = nil
+	pr.RebaseCheckStatus = enum.MergeCheckStatusUnchecked
+	pr.RebaseConflicts = nil
+}
+
+func (pr *PullReq) MarkAsMergeable() {
+	pr.MergeCheckStatus = enum.MergeCheckStatusMergeable
+	pr.MergeConflicts = nil
+}
+
+func (pr *PullReq) MarkAsRebaseable() {
+	pr.RebaseCheckStatus = enum.MergeCheckStatusMergeable
+	pr.RebaseConflicts = nil
+}
+
+func (pr *PullReq) MarkAsMerged() {
+	pr.MergeCheckStatus = enum.MergeCheckStatusMergeable
+	pr.MergeConflicts = nil
+	pr.RebaseCheckStatus = enum.MergeCheckStatusMergeable
+	pr.RebaseConflicts = nil
 }
 
 // DiffStats shows total number of commits and modified files.
 type DiffStats struct {
-	Commits      int `json:"commits,omitempty"`
-	FilesChanged int `json:"files_changed,omitempty"`
+	Commits      *int64 `json:"commits,omitempty"`
+	FilesChanged *int64 `json:"files_changed,omitempty"`
+	Additions    *int64 `json:"additions"`
+	Deletions    *int64 `json:"deletions"`
+}
+
+func NewDiffStats(commitCount, fileCount, additions, deletions int) DiffStats {
+	cc := int64(commitCount)
+	fc := int64(fileCount)
+	add := int64(additions)
+	del := int64(deletions)
+	return DiffStats{
+		Commits:      &cc,
+		FilesChanged: &fc,
+		Additions:    &add,
+		Deletions:    &del,
+	}
 }
 
 // PullReqStats shows Diff statistics and number of conversations.
@@ -66,18 +150,43 @@ type PullReqStats struct {
 
 // PullReqFilter stores pull request query parameters.
 type PullReqFilter struct {
-	Page          int                 `json:"page"`
-	Size          int                 `json:"size"`
-	Query         string              `json:"query"`
-	CreatedBy     int64               `json:"created_by"`
-	SourceRepoID  int64               `json:"-"` // caller should use source_repo_ref
-	SourceRepoRef string              `json:"source_repo_ref"`
-	SourceBranch  string              `json:"source_branch"`
-	TargetRepoID  int64               `json:"-"`
-	TargetBranch  string              `json:"target_branch"`
-	States        []enum.PullReqState `json:"state"`
-	Sort          enum.PullReqSort    `json:"sort"`
-	Order         enum.Order          `json:"order"`
+	Page               int                          `json:"page"`
+	Size               int                          `json:"size"`
+	Query              string                       `json:"query"`
+	CreatedBy          []int64                      `json:"created_by"`
+	SourceRepoID       int64                        `json:"-"` // caller should use source_repo_ref
+	SourceRepoRef      string                       `json:"source_repo_ref"`
+	SourceBranch       string                       `json:"source_branch"`
+	TargetRepoID       int64                        `json:"-"`
+	TargetBranch       string                       `json:"target_branch"`
+	States             []enum.PullReqState          `json:"state"`
+	Sort               enum.PullReqSort             `json:"sort"`
+	Order              enum.Order                   `json:"order"`
+	LabelID            []int64                      `json:"label_id"`
+	ValueID            []int64                      `json:"value_id"`
+	AuthorID           int64                        `json:"author_id"`
+	CommenterID        int64                        `json:"commenter_id"`
+	ReviewerID         int64                        `json:"reviewer_id"`
+	ReviewDecisions    []enum.PullReqReviewDecision `json:"review_decisions"`
+	MentionedID        int64                        `json:"mentioned_id"`
+	ExcludeDescription bool                         `json:"exclude_description"`
+	CreatedFilter
+	UpdatedFilter
+	EditedFilter
+	PullReqMetadataOptions
+
+	// internal use only
+	SpaceIDs        []int64
+	RepoIDBlacklist []int64
+}
+
+type PullReqMetadataOptions struct {
+	IncludeChecks bool `json:"include_checks"`
+	IncludeRules  bool `json:"include_rules"`
+}
+
+func (options PullReqMetadataOptions) IsAllFalse() bool {
+	return !options.IncludeChecks && !options.IncludeRules
 }
 
 // PullReqReview holds pull request review.
@@ -114,6 +223,81 @@ type PullReqReviewer struct {
 	AddedBy  PrincipalInfo `json:"added_by"`
 }
 
+type UserGroupReviewer struct {
+	PullReqID   int64 `json:"-"`
+	UserGroupID int64 `json:"-"`
+
+	CreatedBy int64 `json:"-"`
+	Created   int64 `json:"created"`
+	Updated   int64 `json:"updated"`
+
+	RepoID int64 `json:"-"`
+
+	AddedBy   PrincipalInfo `json:"added_by"`
+	UserGroup UserGroupInfo `json:"reviewer_group"`
+
+	//	Reviewers Info
+	Reviewers []UserGroupReviewerDecision `json:"reviewers"`
+}
+
+type UserGroupReviewerDecision struct {
+	ReviewDecision enum.PullReqReviewDecision `json:"review_decision"`
+	SHA            string                     `json:"sha"`
+	Reviewer       PrincipalInfo              `json:"reviewer"`
+}
+
+// PullReqFileView represents a file reviewed entry for a given pr and principal.
+// NOTE: keep api lightweight and don't return unnecessary extra data.
+type PullReqFileView struct {
+	PullReqID   int64 `json:"-"`
+	PrincipalID int64 `json:"-"`
+
+	Path     string `json:"path"`
+	SHA      string `json:"sha"`
+	Obsolete bool   `json:"obsolete"`
+
+	Created int64 `json:"-"`
+	Updated int64 `json:"-"`
+}
+
 type MergeResponse struct {
-	SHA string
+	SHA            string           `json:"sha,omitempty"`
+	BranchDeleted  bool             `json:"branch_deleted,omitempty"`
+	RuleViolations []RuleViolations `json:"rule_violations,omitempty"`
+
+	// values only returned on dryrun
+	DryRunRules                         bool               `json:"dry_run_rules,omitempty"`
+	DryRun                              bool               `json:"dry_run,omitempty"`
+	Mergeable                           bool               `json:"mergeable,omitempty"`
+	ConflictFiles                       []string           `json:"conflict_files,omitempty"`
+	AllowedMethods                      []enum.MergeMethod `json:"allowed_methods,omitempty"`
+	MinimumRequiredApprovalsCount       int                `json:"minimum_required_approvals_count,omitempty"`
+	MinimumRequiredApprovalsCountLatest int                `json:"minimum_required_approvals_count_latest,omitempty"`
+	RequiresCodeOwnersApproval          bool               `json:"requires_code_owners_approval,omitempty"`
+	RequiresCodeOwnersApprovalLatest    bool               `json:"requires_code_owners_approval_latest,omitempty"`
+	RequiresCommentResolution           bool               `json:"requires_comment_resolution,omitempty"`
+	RequiresNoChangeRequests            bool               `json:"requires_no_change_requests,omitempty"`
+}
+
+type MergeViolations struct {
+	Message        string           `json:"message,omitempty"`
+	ConflictFiles  []string         `json:"conflict_files,omitempty"`
+	RuleViolations []RuleViolations `json:"rule_violations,omitempty"`
+}
+
+type PullReqRepo struct {
+	PullRequest *PullReq    `json:"pull_request"`
+	Repository  *Repository `json:"repository"`
+}
+
+type PullReqSummary struct {
+	PullReqCount int `json:"pull_req_count"`
+	PushReqCount int `json:"push_req_count"`
+	Total        int `json:"total"`
+}
+
+type PullReqSummaryFilter struct {
+	RepoID int64 `json:"repo_id"`
+	Begin  int64 `json:"begin"`
+	End    int64 `json:"end"`
 }

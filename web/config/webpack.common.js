@@ -1,20 +1,36 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 const path = require('path')
 
-const webpack = require('webpack')
 const {
   container: { ModuleFederationPlugin },
   DefinePlugin
 } = require('webpack')
 const MiniCssExtractPlugin = require('mini-css-extract-plugin')
+const HTMLWebpackPlugin = require('html-webpack-plugin')
 const TsconfigPathsPlugin = require('tsconfig-paths-webpack-plugin')
 const GenerateStringTypesPlugin = require('../scripts/webpack/GenerateStringTypesPlugin').GenerateStringTypesPlugin
+const GenerateArStringTypesPlugin =
+  require('../src/ar/scripts/webpack/GenerateArStringTypesPlugin').GenerateArStringTypesPlugin
 const { RetryChunkLoadPlugin } = require('webpack-retry-chunk-load-plugin')
 const MonacoWebpackPlugin = require('monaco-editor-webpack-plugin')
 const moduleFederationConfig = require('./moduleFederation.config')
 const CONTEXT = process.cwd()
-
 const DEV = process.env.NODE_ENV === 'development'
-const ON_PREM = `${process.env.ON_PREM}` === 'true'
 
 module.exports = {
   target: 'web',
@@ -28,9 +44,9 @@ module.exports = {
   },
   output: {
     publicPath: 'auto',
-    filename: DEV ? 'static/[name].js' : 'static/[name].[contenthash:6].js',
-    chunkFilename: DEV ? 'static/[name].[id].js' : 'static/[name].[id].[contenthash:6].js',
-    pathinfo: false
+    pathinfo: false,
+    filename: '[name].[contenthash:6].js',
+    chunkFilename: '[name].[id].[contenthash:6].js'
   },
   module: {
     rules: [
@@ -56,12 +72,6 @@ module.exports = {
         exclude: /node_modules/,
         use: [
           MiniCssExtractPlugin.loader,
-          {
-            loader: '@harness/css-types-loader',
-            options: {
-              prettierConfig: CONTEXT
-            }
-          },
           {
             loader: 'css-loader',
             options: {
@@ -109,7 +119,7 @@ module.exports = {
         ]
       },
       {
-        test: /\.(jpg|jpeg|png|svg|gif)$/,
+        test: /\.(jpg|jpeg|png|gif)$/,
         use: [
           {
             loader: 'url-loader',
@@ -121,12 +131,24 @@ module.exports = {
         ]
       },
       {
+        test: /\.svg$/i,
+        type: 'asset',
+        resourceQuery: /url/ // *.svg?url
+      },
+      {
+        test: /\.svg$/i,
+        issuer: /\.[jt]sx?$/,
+        resourceQuery: { not: [/url/] }, // exclude react component if *.svg?url
+        use: ['@svgr/webpack']
+      },
+      {
         test: /\.css$/,
         use: ['style-loader', 'css-loader']
       },
       {
         test: /\.ttf$/,
-        loader: 'file-loader'
+        loader: 'file-loader',
+        mimetype: 'application/octet-stream'
       },
       {
         test: /\.ya?ml$/,
@@ -148,21 +170,55 @@ module.exports = {
             loader: 'file-loader'
           }
         ]
+      },
+      {
+        test: /\.md$/,
+        use: [
+          {
+            loader: 'raw-loader',
+            options: {
+              esModule: false
+            }
+          }
+        ]
       }
     ]
   },
   resolve: {
     extensions: ['.mjs', '.js', '.ts', '.tsx', '.json', '.ttf', '.scss'],
-    plugins: [new TsconfigPathsPlugin()]
+    plugins: [new TsconfigPathsPlugin()],
+    alias: {
+      'react/jsx-dev-runtime': 'react/jsx-dev-runtime.js',
+      'react/jsx-runtime': 'react/jsx-runtime.js'
+    }
   },
   plugins: [
+    new MiniCssExtractPlugin({
+      ignoreOrder: true,
+      filename: '[name].[contenthash:6].css',
+      chunkFilename: '[name].[id].[contenthash:6].css'
+    }),
+    new HTMLWebpackPlugin({
+      template: 'src/index.html',
+      filename: 'index.html',
+      favicon: 'src/favicon.ico',
+      minify: false,
+      templateParameters: {}
+    }),
+    new HTMLWebpackPlugin({
+      template: 'src/index_public.html',
+      filename: 'index_public.html',
+      favicon: 'src/favicon.ico',
+      minify: false,
+      templateParameters: {}
+    }),
     new ModuleFederationPlugin(moduleFederationConfig),
     new DefinePlugin({
       'process.env': '{}', // required for @blueprintjs/core
-      __DEV__: DEV,
-      __ON_PREM__: ON_PREM
+      __DEV__: DEV
     }),
     new GenerateStringTypesPlugin(),
+    new GenerateArStringTypesPlugin(),
     new RetryChunkLoadPlugin({
       maxRetries: 5
     }),
@@ -173,6 +229,7 @@ module.exports = {
         'apex',
         'azcli',
         'bat',
+        'bicep',
         'cameligo',
         'clojure',
         'coffee',
@@ -180,19 +237,30 @@ module.exports = {
         'csharp',
         'csp',
         'css',
+        'cypher',
+        'dart',
         'dockerfile',
+        'ecl',
+        'elixir',
+        'flow9',
+        'freemarker2',
         'fsharp',
         'go',
         'graphql',
         'handlebars',
+        'hcl',
         'html',
         'ini',
         'java',
         'javascript',
         'json',
+        'julia',
         'kotlin',
         'less',
+        'lexon',
+        'liquid',
         'lua',
+        'm3',
         'markdown',
         'mips',
         'msdax',
@@ -203,11 +271,14 @@ module.exports = {
         'perl',
         'pgsql',
         'php',
+        'pla',
         'postiats',
         'powerquery',
         'powershell',
+        'protobuf',
         'pug',
         'python',
+        'qsharp',
         'r',
         'razor',
         'redis',
@@ -216,20 +287,36 @@ module.exports = {
         'ruby',
         'rust',
         'sb',
+        'scala',
         'scheme',
         'scss',
         'shell',
         'solidity',
         'sophia',
+        'sparql',
         'sql',
         'st',
         'swift',
+        'systemverilog',
         'tcl',
         'twig',
         'typescript',
         'vb',
+        'wgsl',
         'xml',
         'yaml'
+      ],
+      globalAPI: true,
+      filename: '[name].worker.[contenthash:6].js',
+      customLanguages: [
+        {
+          label: 'yaml',
+          entry: 'monaco-yaml',
+          worker: {
+            id: 'monaco-yaml/yamlWorker',
+            entry: 'monaco-yaml/yaml.worker'
+          }
+        }
       ]
     })
   ]

@@ -1,24 +1,24 @@
 /*
- * Copyright 2021 Harness Inc. All rights reserved.
- * Use of this source code is governed by the PolyForm Shield 1.0.0 license
- * that can be found in the licenses directory at the root of this repository, also available at
- * https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt.
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Classes, Icon as BPIcon, Menu, MenuItem, PopoverPosition } from '@blueprintjs/core'
-import {
-  Button,
-  ButtonProps,
-  Container,
-  Layout,
-  ButtonVariation,
-  TextInput,
-  Tabs,
-  FontVariation,
-  Text
-} from '@harness/uicore'
-import { Link } from 'react-router-dom'
+import { Button, ButtonProps, Container, Layout, ButtonVariation, TextInput, Tabs, Text } from '@harnessio/uicore'
+import { Color, FontVariation } from '@harnessio/design-system'
+import { useHistory } from 'react-router-dom'
 import cx from 'classnames'
 import { useGet } from 'restful-react'
 import { noop } from 'lodash-es'
@@ -26,6 +26,7 @@ import { String, useStrings } from 'framework/strings'
 import { getErrorMessage, LIST_FETCHING_LIMIT } from 'utils/Utils'
 import { useAppContext } from 'AppContext'
 import { CodeIcon, GitInfoProps, GitRefType, isRefATag, REFS_TAGS_PREFIX } from 'utils/GitUtils'
+import Branches from '../../icons/Branches.svg?url'
 import css from './BranchTagSelect.module.scss'
 
 export interface BranchTagSelectProps extends Omit<ButtonProps, 'onSelect'>, Pick<GitInfoProps, 'repoMetadata'> {
@@ -37,6 +38,8 @@ export interface BranchTagSelectProps extends Omit<ButtonProps, 'onSelect'>, Pic
   forBranchesOnly?: boolean
   labelPrefix?: string
   placeHolder?: string
+  popoverClassname?: string
+  hidePopoverContent?: boolean
 }
 
 export const BranchTagSelect: React.FC<BranchTagSelectProps> = ({
@@ -49,35 +52,51 @@ export const BranchTagSelect: React.FC<BranchTagSelectProps> = ({
   forBranchesOnly,
   labelPrefix,
   placeHolder,
+  className,
+  popoverClassname,
+  hidePopoverContent,
   ...props
 }) => {
   const [query, onQuery] = useState('')
   const [gitRefType, setGitRefType] = useState(isRefATag(gitRef) ? GitRefType.TAG : GitRefType.BRANCH)
   const text = gitRef.replace(REFS_TAGS_PREFIX, '')
-
   return (
     <Button
-      className={css.button}
+      className={cx(css.button, className, gitRefType == GitRefType.BRANCH ? css.branchContainer : null)}
       text={
         text ? (
           labelPrefix ? (
             <>
+              {gitRefType == GitRefType.BRANCH ? (
+                <span className={css.branchSpan}>
+                  <img src={Branches} width={14} height={14} />
+                </span>
+              ) : null}
+
               <span className={css.prefix}>{labelPrefix}</span>
               {text}
             </>
           ) : (
-            text
+            <>
+              {gitRefType == GitRefType.BRANCH ? (
+                <span className={css.branchSpan}>
+                  <img src={Branches} width={14} height={14} />
+                </span>
+              ) : null}
+              {text}
+            </>
           )
         ) : (
           <span className={css.prefix}>{placeHolder}</span>
         )
       }
-      icon={gitRefType == GitRefType.BRANCH ? CodeIcon.Branch : CodeIcon.Tag}
+      icon={gitRefType == GitRefType.BRANCH ? undefined : CodeIcon.Tag}
       rightIcon="chevron-down"
       variation={ButtonVariation.TERTIARY}
       iconProps={{ size: 14 }}
       tooltip={
         <PopoverContent
+          hidePopoverContent={hidePopoverContent}
           gitRef={gitRef}
           gitRefType={gitRefType}
           repoMetadata={repoMetadata}
@@ -90,13 +109,15 @@ export const BranchTagSelect: React.FC<BranchTagSelectProps> = ({
           disableBranchCreation={disableBranchCreation}
           disableViewAllBranches={disableViewAllBranches}
           onCreateBranch={() => onCreateBranch(query)}
+          className={className}
+          popoverClassname={popoverClassname}
         />
       }
       tooltipProps={{
         interactionKind: 'click',
         usePortal: true,
         position: PopoverPosition.BOTTOM_LEFT,
-        popoverClassName: css.popover
+        popoverClassName: cx(css.popover, popoverClassname)
       }}
       tabIndex={0}
       {...props}
@@ -118,7 +139,10 @@ const PopoverContent: React.FC<PopoverContentProps> = ({
   onQuery,
   forBranchesOnly,
   disableBranchCreation,
-  disableViewAllBranches
+  disableViewAllBranches,
+  hidePopoverContent,
+  className,
+  popoverClassname
 }) => {
   const { getString } = useStrings()
   const [activeTab, setActiveTab] = useState(gitRefType)
@@ -127,9 +151,9 @@ const PopoverContent: React.FC<PopoverContentProps> = ({
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
 
-  return (
-    <Container padding="medium" className={css.main}>
-      <Layout.Vertical spacing="small">
+  return !hidePopoverContent ? (
+    <Container padding="small" className={cx(css.main, { [css.maxWidth]: !className || !popoverClassname })}>
+      <Layout.Vertical spacing="small" className={css.layout}>
         <TextInput
           className={css.input}
           inputRef={ref => (inputRef.current = ref)}
@@ -144,6 +168,11 @@ const PopoverContent: React.FC<PopoverContentProps> = ({
             onQuery(_value)
           }}
           leftIcon={loading ? CodeIcon.InputSpinner : CodeIcon.InputSearch}
+          leftIconProps={{
+            name: loading ? CodeIcon.InputSpinner : CodeIcon.InputSearch,
+            size: 12,
+            color: Color.GREY_500
+          }}
         />
 
         <Container className={cx(css.tabContainer, forBranchesOnly && css.branchesOnly)}>
@@ -196,6 +225,8 @@ const PopoverContent: React.FC<PopoverContentProps> = ({
         </Container>
       </Layout.Vertical>
     </Container>
+  ) : (
+    <></>
   )
 }
 
@@ -234,7 +265,7 @@ function GitRefList({
   useEffect(() => {
     setLoading(loading)
   }, [setLoading, loading])
-
+  const history = useHistory()
   return (
     <Container>
       {!!error && (
@@ -246,21 +277,24 @@ function GitRefList({
       {!!data?.length && (
         <Container className={css.listContainer} padding={{ top: 'small', bottom: 'small' }}>
           <Menu>
-            {data.map(({ name }) => (
-              <MenuItem
-                key={name}
-                text={name}
-                labelElement={name === gitRef ? <BPIcon icon="small-tick" /> : undefined}
-                disabled={name === gitRef}
-                onClick={() => onSelect(name as string, gitRefType)}
-              />
-            ))}
+            {data.map(({ name }) => {
+              const isItemSelected = name === gitRef && activeGitRefType === gitRefType
+              return (
+                <MenuItem
+                  key={name}
+                  text={name}
+                  labelElement={isItemSelected ? <BPIcon icon="tick" /> : undefined}
+                  disabled={isItemSelected}
+                  onClick={() => onSelect(name as string, gitRefType)}
+                />
+              )
+            })}
           </Menu>
         </Container>
       )}
 
       {data?.length === 0 && (
-        <Container flex={{ align: 'center-center' }} padding="large">
+        <Container flex={{ align: 'center-center' }} padding="medium">
           {(gitRefType === GitRefType.BRANCH &&
             ((disableBranchCreation && (
               <Text padding={{ top: 'small' }}>
@@ -268,19 +302,25 @@ function GitRefList({
               </Text>
             )) || (
               <Button
+                padding={'xsmall'}
                 text={
-                  <String
-                    stringID={activeGitRefType === GitRefType.BRANCH ? 'createBranchFromBranch' : 'createBranchFromTag'}
-                    tagName="span"
-                    className={css.newBtnText}
-                    vars={{ newBranch: query, target: gitRef }}
-                    useRichText
-                  />
+                  <>
+                    <String
+                      stringID={
+                        activeGitRefType === GitRefType.BRANCH ? 'createBranchFromBranch' : 'createBranchFromTag'
+                      }
+                      tagName="span"
+                      className={css.newBtnText}
+                      vars={{ newBranch: query, target: gitRef }}
+                      useRichText
+                    />
+                  </>
                 }
-                icon={CodeIcon.Branch}
+                iconProps={{ size: 22 }}
+                icon={CodeIcon.BranchSmall}
                 variation={ButtonVariation.SECONDARY}
                 onClick={() => onCreateBranch()}
-                className={Classes.POPOVER_DISMISS}
+                className={cx(Classes.POPOVER_DISMISS, css.newBranchOption)}
               />
             ))) || (
             <Text padding={{ top: 'small' }}>
@@ -291,10 +331,12 @@ function GitRefList({
       )}
 
       {!disableViewAllBranches && gitRefType === GitRefType.BRANCH && (
-        <Container border={{ top: true }} flex={{ align: 'center-center' }} padding={{ top: 'small' }}>
-          <Link to={routes.toCODEBranches({ repoPath: repoMetadata.path as string })}>
-            {getString('viewAllBranches')}
-          </Link>
+        <Container border={{ top: true }} flex={{ align: 'center-center' }} padding={{ top: 'xsmall' }}>
+          <Button
+            variation={ButtonVariation.LINK}
+            text={getString('viewAllBranches')}
+            onClick={() => history.push(routes.toCODEBranches({ repoPath: repoMetadata.path as string }))}
+          />
         </Container>
       )}
     </Container>

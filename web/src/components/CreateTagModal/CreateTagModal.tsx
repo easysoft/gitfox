@@ -1,8 +1,17 @@
 /*
- * Copyright 2021 Harness Inc. All rights reserved.
- * Use of this source code is governed by the PolyForm Shield 1.0.0 license
- * that can be found in the licenses directory at the root of this repository, also available at
- * https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt.
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import React, { useCallback, useState } from 'react'
@@ -14,24 +23,25 @@ import {
   Container,
   Layout,
   FlexExpander,
-  Icon,
   Formik,
   FormikForm,
   Heading,
   useToaster,
   FormInput,
   Label,
-  ButtonVariation
-} from '@harness/uicore'
-import { FontVariation } from '@harness/design-system'
+  ButtonVariation,
+  StringSubstitute
+} from '@harnessio/uicore'
+import { Icon } from '@harnessio/icons'
+import { FontVariation } from '@harnessio/design-system'
 import { useMutate } from 'restful-react'
 import { get } from 'lodash-es'
-import { useModalHook } from '@harness/use-modal'
+import { useModalHook } from 'hooks/useModalHook'
 import { useStrings } from 'framework/strings'
 import { getErrorMessage, permissionProps } from 'utils/Utils'
-import { GitInfoProps, isGitBranchNameValid } from 'utils/GitUtils'
+import { GitInfoProps, normalizeGitRef, isGitBranchNameValid } from 'utils/GitUtils'
 import { BranchTagSelect } from 'components/BranchTagSelect/BranchTagSelect'
-import type { RepoBranch } from 'services/code'
+import type { TypesBranchExtended } from 'services/code'
 import { useGetSpaceParam } from 'hooks/useGetSpaceParam'
 import { useAppContext } from 'AppContext'
 import css from './CreateTagModal.module.scss'
@@ -45,12 +55,12 @@ interface FormData {
 interface UseCreateTagModalProps extends Pick<GitInfoProps, 'repoMetadata'> {
   suggestedBranchName?: string
   suggestedSourceBranch?: string
-  onSuccess: (data: RepoBranch) => void
+  onSuccess: (data: TypesBranchExtended) => void
   showSuccessMessage?: boolean
 }
 
 interface CreateTagModalButtonProps extends Omit<ButtonProps, 'onClick'>, UseCreateTagModalProps {
-  onSuccess: (data: RepoBranch) => void
+  onSuccess: (data: TypesBranchExtended) => void
   showSuccessMessage?: boolean
 }
 
@@ -66,7 +76,7 @@ export function useCreateTagModal({
     const { getString } = useStrings()
     const [sourceBranch, setSourceBranch] = useState(suggestedSourceBranch || (repoMetadata.default_branch as string))
     const { showError, showSuccess } = useToaster()
-    const { mutate: createTag, loading } = useMutate<RepoBranch>({
+    const { mutate: createTag, loading } = useMutate<TypesBranchExtended>({
       verb: 'POST',
       path: `/api/v1/repos/${repoMetadata.path}/+/tags`
     })
@@ -78,20 +88,28 @@ export function useCreateTagModal({
         createTag({
           name,
           message: description,
-          target: sourceBranch
+          target: normalizeGitRef(sourceBranch)
         })
           .then(response => {
             hideModal()
             onSuccess(response)
             if (showSuccessMessage) {
-              showSuccess(getString('tagCreated', { tag: name }), 5000)
+              showSuccess(
+                <StringSubstitute
+                  str={getString('tagCreated')}
+                  vars={{
+                    tag: name
+                  }}
+                />,
+                5000
+              )
             }
           })
           .catch(_error => {
-            showError(getErrorMessage(_error), 0, 'failedToCreateTag')
+            showError(getErrorMessage(_error), 5000, 'failedToCreateTag')
           })
       } catch (exception) {
-        showError(getErrorMessage(exception), 0, 'failedToCreateTag')
+        showError(getErrorMessage(exception), 5000, 'failedToCreateTag')
       }
     }
 
@@ -101,12 +119,12 @@ export function useCreateTagModal({
         enforceFocus={false}
         onClose={hideModal}
         title={''}
-        style={{ width: 700, maxHeight: '95vh', overflow: 'auto' }}>
+        style={{ width: 585, maxHeight: '95vh', overflow: 'auto' }}>
         <Layout.Vertical padding={{ left: 'xxlarge' }} style={{ height: '100%' }} className={css.main}>
           <Heading className={css.title} font={{ variation: FontVariation.H3 }} margin={{ bottom: 'xlarge' }}>
             {getString('createATag')}
           </Heading>
-          <Container margin={{ right: 'xxlarge' }}>
+          <Container className={css.container} margin={{ right: 'xxlarge' }}>
             <Formik<FormData>
               initialValues={{
                 name: branchName,
@@ -119,12 +137,12 @@ export function useCreateTagModal({
                 name: yup
                   .string()
                   .trim()
-                  .required()
+                  .required(getString('validation.required', { name: getString('name') })) // GITFOX!
                   .test('valid-tag-name', getString('validation.gitTagNameInvalid'), value => {
                     const val = value || ''
                     return !!val && isGitBranchNameValid(val)
                   }),
-                description: yup.string().required()
+                description: yup.string().required(getString('validation.required', { name: getString('description') })) // GITFOX!
               })}
               validateOnChange
               validateOnBlur
@@ -142,14 +160,15 @@ export function useCreateTagModal({
                 <Container margin={{ top: 'medium', bottom: 'medium' }}>
                   <Label className={css.label}>{getString('basedOn')}</Label>
                   {/* <Text className={css.branchSourceDesc}>{getString('branchSourceDesc')}</Text> */}
-                  <Layout.Horizontal spacing="medium" padding={{ top: 'xsmall' }}>
+                  <Layout.Horizontal className={css.selectContainer} padding={{ top: 'xsmall' }}>
                     <BranchTagSelect
+                      className={css.branchTagSelect}
                       repoMetadata={repoMetadata}
                       disableBranchCreation
                       disableViewAllBranches
-                      forBranchesOnly
                       gitRef={sourceBranch}
                       onSelect={setSourceBranch}
+                      popoverClassname={css.popoverContainer}
                     />
                     <FlexExpander />
                   </Layout.Horizontal>
@@ -163,18 +182,18 @@ export function useCreateTagModal({
 
                 <Layout.Horizontal
                   spacing="small"
-                  padding={{ right: 'xxlarge', top: 'xxxlarge', bottom: 'large' }}
+                  padding={{ right: 'xxlarge', top: 'xxlarge', bottom: 'large' }}
                   style={{ alignItems: 'center' }}>
                   <Button
                     type="submit"
-                    text={getString('create')}
+                    text={getString('createTag')}
                     variation={ButtonVariation.PRIMARY}
                     disabled={loading}
                   />
                   <Button text={getString('cancel')} variation={ButtonVariation.LINK} onClick={hideModal} />
                   <FlexExpander />
 
-                  {loading && <Icon intent={Intent.PRIMARY} name="spinner" size={16} />}
+                  {loading && <Icon intent={Intent.PRIMARY} name="steps-spinner" size={16} />}
                 </Layout.Horizontal>
               </FormikForm>
             </Formik>
@@ -216,7 +235,8 @@ export const CreateTagModalButton: React.FC<CreateTagModalButtonProps> = ({
   const permPushResult = hooks?.usePermissionTranslate?.(
     {
       resource: {
-        resourceType: 'CODE_REPOSITORY'
+        resourceType: 'CODE_REPOSITORY',
+        resourceIdentifier: repoMetadata?.identifier as string
       },
       permissions: ['code_repo_push']
     },

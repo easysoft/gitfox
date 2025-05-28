@@ -1,0 +1,23 @@
+.main {
+  > div {
+    .content {
+      .header {
+        .headerLayout {
+          --typography-color: var(--color-canvas);
+        }
+      }
+    }
+  }
+}
+
+.pipelineSteps {
+  .stepHeader {
+    --typography-color: var(--color-canvas);
+
+    :global {
+      .StyledProps--color-grey300 {
+        opacity: 0.5;
+      }
+    }
+  }
+}

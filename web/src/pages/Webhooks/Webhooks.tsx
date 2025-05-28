@@ -1,21 +1,36 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Container,
   PageBody,
   Text,
-  Color,
   TableV2,
   Layout,
   Utils,
   useToaster,
-  IconName,
   Toggle,
   Popover,
   Button,
   ButtonVariation,
-  FontVariation,
-  Icon
-} from '@harness/uicore'
+  StringSubstitute
+} from '@harnessio/uicore'
+import { Icon, IconName } from '@harnessio/icons'
+import { Color, FontVariation } from '@harnessio/design-system'
 import { useHistory } from 'react-router-dom'
 import cx from 'classnames'
 import { Position } from '@blueprintjs/core'
@@ -25,7 +40,7 @@ import { useAppContext } from 'AppContext'
 import { useGetRepositoryMetadata } from 'hooks/useGetRepositoryMetadata'
 import { useStrings } from 'framework/strings'
 import { RepositoryPageHeader } from 'components/RepositoryPageHeader/RepositoryPageHeader'
-import { voidFn, getErrorMessage, LIST_FETCHING_LIMIT, PageBrowserProps } from 'utils/Utils'
+import { voidFn, getErrorMessage, LIST_FETCHING_LIMIT, PageBrowserProps, permissionProps } from 'utils/Utils'
 import { OptionsMenuButton } from 'components/OptionsMenuButton/OptionsMenuButton'
 import { useConfirmAct } from 'hooks/useConfirmAction'
 import { usePageIndex } from 'hooks/usePageIndex'
@@ -35,6 +50,8 @@ import { ResourceListingPagination } from 'components/ResourceListingPagination/
 import { LoadingSpinner } from 'components/LoadingSpinner/LoadingSpinner'
 import { NoResultCard } from 'components/NoResultCard/NoResultCard'
 import type { OpenapiWebhookType } from 'services/code'
+import { WebhookTabs, formatTriggers } from 'utils/GitUtils'
+import { useGetSpaceParam } from 'hooks/useGetSpaceParam'
 import { WebhooksHeader } from './WebhooksHeader/WebhooksHeader'
 import css from './Webhooks.module.scss'
 
@@ -45,12 +62,11 @@ export default function Webhooks() {
   const { updateQueryParams } = useUpdateQueryParams()
 
   const pageBrowser = useQueryParams<PageBrowserProps>()
-  const pageInit = pageBrowser.page ? parseInt(pageBrowser.page): 1
+  const pageInit = pageBrowser.page ? parseInt(pageBrowser.page) : 1
   const [page, setPage] = usePageIndex(pageInit)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState<string | undefined>()
   const { repoMetadata, error, loading, refetch } = useGetRepositoryMetadata()
   const { showError, showSuccess } = useToaster()
-
   const {
     data: webhooks,
     loading: webhooksLoading,
@@ -66,11 +82,14 @@ export default function Webhooks() {
       order: 'desc',
       query: searchTerm
     },
+    debounce: 500,
     lazy: !repoMetadata
   })
   useEffect(() => {
-    updateQueryParams({ page: page.toString() })
-  }, [setPage])
+    if (page > 1) {
+      updateQueryParams({ page: page.toString() })
+    }
+  }, [setPage]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const columns: Column<OpenapiWebhookType>[] = useMemo(
     () => [
@@ -82,7 +101,7 @@ export default function Webhooks() {
 
           const { mutate } = useMutate<OpenapiWebhookType>({
             verb: 'PATCH',
-            path: `/api/v1/repos/${repoMetadata?.path}/+/webhooks/${row.original?.id}`
+            path: `/api/v1/repos/${repoMetadata?.path}/+/webhooks/${row.original?.identifier}`
           })
           const [popoverDialogOpen, setPopoverDialogOpen] = useState(false)
 
@@ -92,7 +111,7 @@ export default function Webhooks() {
 
               <Container onClick={Utils.stopEvent}>
                 <Popover
-                  isOpen={popoverDialogOpen}
+                  isOpen={popoverDialogOpen && permPushResult}
                   onInteraction={nextOpenState => {
                     setPopoverDialogOpen(nextOpenState)
                   }}
@@ -105,8 +124,12 @@ export default function Webhooks() {
                         <Text
                           padding={{ top: 'medium', bottom: 'medium' }}
                           font={{ variation: FontVariation.BODY2_SEMI }}>
-                          {checked ? getString('disableWebhookContent') : getString('enableWebhookContent')}
-                          <strong>{` "${row.original.display_name}"`}</strong>
+                          <StringSubstitute
+                            str={checked ? getString('disableWebhookContent') : getString('enableWebhookContent')}
+                            vars={{
+                              name: <strong>{row.original?.identifier}</strong>
+                            }}
+                          />
                         </Text>
                         <Layout.Horizontal>
                           <Button
@@ -118,8 +141,8 @@ export default function Webhooks() {
                                 .then(() => {
                                   showSuccess(getString('webhookUpdated'))
                                 })
-                                .catch(e => {
-                                  showError(e)
+                                .catch(err => {
+                                  showError(getErrorMessage(err))
                                 })
                               setChecked(!checked)
                               setPopoverDialogOpen(false)
@@ -139,7 +162,8 @@ export default function Webhooks() {
                   position={Position.RIGHT}
                   interactionKind="click">
                   <Toggle
-                    key={row.original.id}
+                    {...permissionProps(permPushResult, standalone)}
+                    key={row.original.identifier}
                     className={cx(css.toggle, checked ? css.toggleEnable : css.toggleDisable)}
                     checked={checked}></Toggle>
                 </Popover>
@@ -152,11 +176,11 @@ export default function Webhooks() {
                     lineClamp={1}
                     width={300}
                     className={css.title}>
-                    {row.original.display_name}
+                    {row.original.identifier}
                   </Text>
                   {!!row.original.triggers?.length && (
                     <Text padding={{ left: 'small', right: 'small' }} color={Color.GREY_500}>
-                      ({row.original.triggers.join(', ')})
+                      ({formatTriggers(row.original?.triggers).join(', ')})
                     </Text>
                   )}
                   {!row.original.triggers?.length && (
@@ -188,7 +212,7 @@ export default function Webhooks() {
         Cell: ({ row }: CellProps<OpenapiWebhookType>) => {
           const { mutate: deleteWebhook } = useMutate({
             verb: 'DELETE',
-            path: `/api/v1/repos/${repoMetadata?.path}/+/webhooks/${row.original.id}`
+            path: `/api/v1/repos/${repoMetadata?.path}/+/webhooks/${row.original.identifier}`
           })
           const confirmDelete = useConfirmAct()
 
@@ -197,6 +221,7 @@ export default function Webhooks() {
               <OptionsMenuButton
                 width="100px"
                 isDark
+                {...permissionProps(permPushResult, standalone)}
                 items={[
                   {
                     hasIcon: true,
@@ -206,7 +231,7 @@ export default function Webhooks() {
                       history.push(
                         routes.toCODEWebhookDetails({
                           repoPath: repoMetadata?.path as string,
-                          webhookId: String(row.original?.id)
+                          webhookId: String(row.original?.identifier)
                         })
                       )
                     }
@@ -231,6 +256,20 @@ export default function Webhooks() {
                         }
                       })
                     }
+                  },
+                  {
+                    hasIcon: true,
+                    iconName: 'execution',
+                    iconSize: 16,
+                    text: getString('executionHistory'),
+                    onClick: () => {
+                      history.push(
+                        `${routes.toCODEWebhookDetails({
+                          repoPath: repoMetadata?.path as string,
+                          webhookId: String(row.original?.identifier)
+                        })}?tab=${WebhookTabs.EXECUTIONS}`
+                      )
+                    }
                   }
                 ]}
               />
@@ -238,21 +277,32 @@ export default function Webhooks() {
           )
         }
       }
-    ],
+    ], // eslint-disable-next-line react-hooks/exhaustive-deps
     [history, getString, refetchWebhooks, repoMetadata?.path, routes, setPage, showError, showSuccess]
   )
-
+  const { hooks, standalone } = useAppContext()
+  const space = useGetSpaceParam()
+  const permPushResult = hooks?.usePermissionTranslate?.(
+    {
+      resource: {
+        resourceType: 'CODE_REPOSITORY',
+        resourceIdentifier: repoMetadata?.identifier as string
+      },
+      permissions: ['code_repo_edit']
+    },
+    [space]
+  )
   return (
     <Container className={css.main}>
       <RepositoryPageHeader repoMetadata={repoMetadata} title={getString('webhooks')} dataTooltipId="webhooks" />
       <PageBody error={getErrorMessage(error || webhooksError)} retryOnError={voidFn(refetch)}>
-        <LoadingSpinner visible={loading} />
+        <LoadingSpinner visible={loading || (webhooksLoading && searchTerm === undefined)} />
 
         {repoMetadata && (
           <Layout.Vertical>
             <WebhooksHeader
               repoMetadata={repoMetadata}
-              loading={webhooksLoading}
+              loading={webhooksLoading && searchTerm !== undefined}
               onSearchTermChanged={value => {
                 setSearchTerm(value)
                 setPage(1)
@@ -271,7 +321,7 @@ export default function Webhooks() {
                       history.push(
                         routes.toCODEWebhookDetails({
                           repoPath: repoMetadata.path as string,
-                          webhookId: String(row.id)
+                          webhookId: String(row.identifier)
                         })
                       )
                     }}
@@ -285,7 +335,7 @@ export default function Webhooks() {
                 showWhen={() => webhooks?.length === 0}
                 forSearch={!!searchTerm}
                 message={getString('webhookEmpty')}
-                buttonText={getString('createWebhook')}
+                buttonText={getString('newWebhook')}
                 onButtonClick={() =>
                   history.push(
                     routes.toCODEWebhookNew({
@@ -293,6 +343,7 @@ export default function Webhooks() {
                     })
                   )
                 }
+                permissionProp={permissionProps(permPushResult, standalone)}
               />
             </Container>
           </Layout.Vertical>

@@ -1,12 +1,30 @@
 /*
- * Copyright 2021 Harness Inc. All rights reserved.
- * Use of this source code is governed by the PolyForm Shield 1.0.0 license
- * that can be found in the licenses directory at the root of this repository, also available at
- * https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt.
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { Icon as BPIcon, Classes, Dialog, Intent, Menu, MenuDivider, MenuItem } from '@blueprintjs/core'
+import {
+  Icon as BPIcon,
+  Classes,
+  Dialog,
+  Intent,
+  Menu,
+  MenuDivider,
+  MenuItem,
+  PopoverPosition
+} from '@blueprintjs/core'
 import * as yup from 'yup'
 import {
   Button,
@@ -14,7 +32,6 @@ import {
   Container,
   Layout,
   FlexExpander,
-  Icon,
   Formik,
   FormikForm,
   Heading,
@@ -23,12 +40,15 @@ import {
   Text,
   ButtonVariation,
   ButtonSize,
-  TextInput
-} from '@harness/uicore'
-import { FontVariation } from '@harness/design-system'
+  TextInput,
+  SplitButton
+} from '@harnessio/uicore'
+import { Icon } from '@harnessio/icons'
+import { Color, FontVariation } from '@harnessio/design-system'
 import { useGet, useMutate } from 'restful-react'
-import { get } from 'lodash-es'
-import { useModalHook } from '@harness/use-modal'
+import { Render } from 'react-jsx-match'
+import { compact, get } from 'lodash-es'
+import { useModalHook } from 'hooks/useModalHook'
 import { useStrings } from 'framework/strings'
 import {
   DEFAULT_BRANCH_NAME,
@@ -37,25 +57,29 @@ import {
   REGEX_VALID_REPO_NAME,
   SUGGESTED_BRANCH_NAMES
 } from 'utils/Utils'
-import { isGitBranchNameValid } from 'utils/GitUtils'
-import type { TypesRepository, OpenapiCreateRepositoryRequest } from 'services/code'
+import {
+  ConvertPipelineLabel,
+  GitProviders,
+  ImportFormData,
+  ImportSpaceFormData,
+  RepoCreationType,
+  RepoFormData,
+  RepoVisibility,
+  isGitBranchNameValid,
+  getProviderTypeMapping
+} from 'utils/GitUtils'
+import type {
+  SpaceSpaceOutput,
+  RepoRepositoryOutput,
+  SpaceImportRepositoriesOutput,
+  OpenapiCreateRepositoryRequest
+} from 'services/code'
 import { useAppContext } from 'AppContext'
+import { usePublicResourceConfig } from 'hooks/usePublicResourceConfig'
+import ImportForm from './ImportForm/ImportForm'
+import ImportReposForm from './ImportReposForm/ImportReposForm'
+import Private from '../../icons/private.svg?url'
 import css from './NewRepoModalButton.module.scss'
-
-enum RepoVisibility {
-  PUBLIC = 'public',
-  PRIVATE = 'private'
-}
-
-interface RepoFormData {
-  name: string
-  description: string
-  license: string
-  defaultBranch: string
-  gitignore: string
-  addReadme: boolean
-  isPublic: RepoVisibility
-}
 
 const formInitialValues: RepoFormData = {
   name: '',
@@ -72,7 +96,9 @@ export interface NewRepoModalButtonProps extends Omit<ButtonProps, 'onClick' | '
   modalTitle: string
   submitButtonTitle?: string
   cancelButtonTitle?: string
-  onSubmit: (data: TypesRepository) => void
+  onSubmit: (data: RepoRepositoryOutput & SpaceImportRepositoriesOutput) => void
+  repoCreationType?: RepoCreationType
+  customRenderer?: (onChange: (event: any) => void) => React.ReactNode
 }
 
 export const NewRepoModalButton: React.FC<NewRepoModalButtonProps> = ({
@@ -84,17 +110,33 @@ export const NewRepoModalButton: React.FC<NewRepoModalButtonProps> = ({
   ...props
 }) => {
   const ModalComponent: React.FC = () => {
-    const { standalone } = useAppContext()
     const { getString } = useStrings()
     const [branchName, setBranchName] = useState(DEFAULT_BRANCH_NAME)
+    const { allowPublicResourceCreation, configLoading, systemConfigError, errorWhileFetchingAuthSettings } =
+      usePublicResourceConfig()
     const { showError } = useToaster()
 
-    const { mutate: createRepo, loading: submitLoading } = useMutate<TypesRepository>({
+    const { mutate: createRepo, loading: submitLoading } = useMutate<RepoRepositoryOutput>({
       verb: 'POST',
       path: `/api/v1/repos`,
-      queryParams: {
-        space_path: space
-      }
+      queryParams: standalone
+        ? undefined
+        : {
+            space_path: space
+          }
+    })
+    const { mutate: importRepo, loading: importRepoLoading } = useMutate<RepoRepositoryOutput>({
+      verb: 'POST',
+      path: `/api/v1/repos/import`,
+      queryParams: standalone
+        ? undefined
+        : {
+            space_path: space
+          }
+    })
+    const { mutate: importMultipleRepositories, loading: submitImportLoading } = useMutate<SpaceSpaceOutput>({
+      verb: 'POST',
+      path: `/api/v1/spaces/${space}/+/import`
     })
     const {
       data: gitignores,
@@ -106,13 +148,18 @@ export const NewRepoModalButton: React.FC<NewRepoModalButtonProps> = ({
       loading: licenseLoading,
       error: licenseError
     } = useGet({ path: '/api/v1/resources/license' })
-    const loading = submitLoading || gitIgnoreLoading || licenseLoading
+
+    const loading =
+      submitLoading || gitIgnoreLoading || licenseLoading || importRepoLoading || submitImportLoading || configLoading
 
     useEffect(() => {
-      if (gitIgnoreError || licenseError) {
-        showError(getErrorMessage(gitIgnoreError || licenseError), 0)
+      if (gitIgnoreError || licenseError || systemConfigError || errorWhileFetchingAuthSettings) {
+        showError(
+          getErrorMessage(gitIgnoreError || licenseError || systemConfigError || errorWhileFetchingAuthSettings),
+          0
+        )
       }
-    }, [gitIgnoreError, licenseError, showError])
+    }, [gitIgnoreError, licenseError, systemConfigError, errorWhileFetchingAuthSettings, showError])
 
     const handleSubmit = (formData: RepoFormData) => {
       try {
@@ -122,9 +169,9 @@ export const NewRepoModalButton: React.FC<NewRepoModalButtonProps> = ({
           git_ignore: get(formData, 'gitignore', 'none'),
           is_public: get(formData, 'isPublic') === RepoVisibility.PUBLIC,
           license: get(formData, 'license', 'none'),
-          uid: get(formData, 'name', '').trim(),
+          identifier: get(formData, 'name', '').trim(),
           readme: get(formData, 'addReadme', false),
-          parent_id: standalone ? (space as unknown as number) : 0 // TODO: Backend needs to fix parentID: accept string or number
+          parent_ref: space
         }
         createRepo(payload)
           .then(response => {
@@ -132,166 +179,294 @@ export const NewRepoModalButton: React.FC<NewRepoModalButtonProps> = ({
             onSubmit(response)
           })
           .catch(_error => {
-            showError(getErrorMessage(_error), 0, getString('failedToCreateRepo'))
+            showError(getErrorMessage(_error), 5000, getString('failedToCreateRepo'))
           })
       } catch (exception) {
-        showError(getErrorMessage(exception), 0, getString('failedToCreateRepo'))
+        showError(getErrorMessage(exception), 5000, getString('failedToCreateRepo'))
       }
     }
 
+    const handleImportSubmit = (formData: ImportFormData) => {
+      const type = getProviderTypeMapping(formData.gitProvider)
+
+      const provider = {
+        type,
+        username: formData.username,
+        password: formData.password,
+        host: ''
+      }
+
+      if (
+        ![GitProviders.GITHUB, GitProviders.GITLAB, GitProviders.BITBUCKET, GitProviders.AZURE].includes(
+          formData.gitProvider
+        )
+      ) {
+        provider.host = formData.hostUrl
+      }
+
+      const importPayload = {
+        description: formData.description || '',
+        parent_ref: space,
+        identifier: formData.name,
+        provider,
+        provider_repo: compact([
+          formData.org,
+          formData.gitProvider === GitProviders.AZURE ? formData.project : '',
+          formData.repo
+        ])
+          .join('/')
+          .replace(/\.git$/, ''),
+        mirror:
+          standalone && formData.mirror,
+        pipelines:
+          standalone && formData.importPipelineLabel ? ConvertPipelineLabel.CONVERT : ConvertPipelineLabel.IGNORE
+      }
+      importRepo(importPayload)
+        .then(response => {
+          hideModal()
+          onSubmit(response)
+        })
+        .catch(_error => {
+          showError(getErrorMessage(_error), 5000, getString('importRepo.failedToImportRepo'))
+        })
+    }
+
+    const handleMultiRepoImportSubmit = async (formData: ImportSpaceFormData) => {
+      const type = getProviderTypeMapping(formData.gitProvider)
+
+      const provider = {
+        type,
+        username: formData.username,
+        password: formData.password,
+        host: ''
+      }
+
+      if (
+        ![GitProviders.GITHUB, GitProviders.GITLAB, GitProviders.BITBUCKET, GitProviders.AZURE].includes(
+          formData.gitProvider
+        )
+      ) {
+        provider.host = formData.host
+      }
+
+      try {
+        const importPayload = {
+          description: (formData.description || '').trim(),
+          parent_ref: space,
+          identifier: formData.name.trim(),
+          provider,
+          provider_space: compact([
+            formData.organization,
+            formData.gitProvider === GitProviders.AZURE ? formData.project : ''
+          ]).join('/'),
+          mirror:
+            standalone && formData.mirror,
+          pipelines:
+            standalone && formData.importPipelineLabel ? ConvertPipelineLabel.CONVERT : ConvertPipelineLabel.IGNORE
+        }
+        const response = await importMultipleRepositories(importPayload)
+        hideModal()
+        onSubmit(response)
+      } catch (exception) {
+        showError(getErrorMessage(exception), 5000, getString('failedToImportSpace'))
+      }
+    }
     return (
       <Dialog
         isOpen
         enforceFocus={false}
         onClose={hideModal}
         title={''}
-        style={{ width: 700, maxHeight: '95vh', overflow: 'auto' }}>
+        style={{ width: 610, maxHeight: '95vh', overflow: 'auto' }}>
         <Layout.Vertical
           padding={{ left: 'xxlarge' }}
           style={{ height: '100%' }}
           data-testid="add-target-to-flag-modal">
           <Heading level={3} font={{ variation: FontVariation.H3 }} margin={{ bottom: 'xlarge' }}>
-            {modalTitle}
+            {repoOption.type === RepoCreationType.IMPORT
+              ? getString('importRepo.title')
+              : repoOption.type === RepoCreationType.IMPORT_MULTIPLE
+              ? getString('importRepos.title')
+              : modalTitle}
           </Heading>
 
           <Container margin={{ right: 'xxlarge' }}>
-            <Formik
-              initialValues={formInitialValues}
-              formName="editVariations"
-              enableReinitialize={true}
-              validationSchema={yup.object().shape({
-                name: yup
-                  .string()
-                  .trim()
-                  .required()
-                  .matches(REGEX_VALID_REPO_NAME, getString('validation.repoNamePatternIsNotValid'))
-              })}
-              validateOnChange
-              validateOnBlur
-              onSubmit={handleSubmit}>
-              <FormikForm>
-                <FormInput.Text
-                  name="name"
-                  label={getString('name')}
-                  placeholder={getString('enterRepoName')}
-                  tooltipProps={{
-                    dataTooltipId: 'repositoryNameTextField'
-                  }}
-                  inputGroup={{ autoFocus: true }}
-                />
-                <FormInput.Text
-                  name="description"
-                  label={getString('description')}
-                  placeholder={getString('enterDescription')}
-                  tooltipProps={{
-                    dataTooltipId: 'repositoryDescriptionTextField'
-                  }}
-                />
-                <Container margin={{ top: 'medium', bottom: 'medium' }}>
-                  <Text>
-                    {getString('createRepoModal.branchLabel')}
-                    <strong>
-                      <Button
-                        text={branchName}
-                        icon="git-new-branch"
-                        rightIcon="chevron-down"
-                        variation={ButtonVariation.TERTIARY}
-                        size={ButtonSize.SMALL}
-                        iconProps={{ size: 14 }}
-                        tooltip={<BranchName currentBranchName={branchName} onSelect={name => setBranchName(name)} />}
-                        tooltipProps={{ interactionKind: 'click' }}
-                      />
-                    </strong>
-                    {getString('createRepoModal.branch')}
-                  </Text>
-                </Container>
-                <Container>
-                  <FormInput.RadioGroup
-                    name="isPublic"
-                    label=""
-                    items={[
-                      {
-                        label: (
-                          <Container>
-                            <Layout.Horizontal>
-                              <Icon name="git-clone-step" size={20} margin={{ right: 'medium' }} />
-                              <Container>
-                                <Layout.Vertical spacing="xsmall">
-                                  <Text>{getString('public')}</Text>
-                                  <Text font={{ variation: FontVariation.TINY }}>
-                                    {getString('createRepoModal.publicLabel')}
-                                  </Text>
-                                </Layout.Vertical>
-                              </Container>
-                            </Layout.Horizontal>
-                          </Container>
-                        ),
-                        value: RepoVisibility.PUBLIC
-                      },
-                      {
-                        label: (
-                          <Container>
-                            <Layout.Horizontal>
-                              <Icon name="git-clone-step" size={20} margin={{ right: 'medium' }} />
-                              <Container margin={{ left: 'small' }}>
-                                <Layout.Vertical spacing="xsmall">
-                                  <Text>{getString('private')}</Text>
-                                  <Text font={{ variation: FontVariation.TINY }}>
-                                    {getString('createRepoModal.privateLabel')}
-                                  </Text>
-                                </Layout.Vertical>
-                              </Container>
-                            </Layout.Horizontal>
-                          </Container>
-                        ),
-                        value: RepoVisibility.PRIVATE
-                      }
-                    ]}
+            {repoOption.type === RepoCreationType.IMPORT ? (
+              <ImportForm hideModal={hideModal} handleSubmit={handleImportSubmit} loading={false} />
+            ) : repoOption.type === RepoCreationType.IMPORT_MULTIPLE ? (
+              <ImportReposForm
+                hideModal={hideModal}
+                handleSubmit={handleMultiRepoImportSubmit}
+                loading={false}
+                spaceRef={space}
+              />
+            ) : (
+              <Formik
+                initialValues={formInitialValues}
+                formName="editVariations"
+                enableReinitialize={true}
+                validationSchema={yup.object().shape({
+                  name: yup
+                    .string()
+                    .trim()
+                    .required(getString('validation.required', { name: getString('name') }))
+                    .matches(REGEX_VALID_REPO_NAME, getString('validation.nameLogic')) // GITFOX!
+                })}
+                validateOnChange
+                validateOnBlur
+                onSubmit={handleSubmit}>
+                <FormikForm>
+                  <FormInput.Text
+                    name="name"
+                    label={getString('name')}
+                    placeholder={getString('enterRepoName')}
+                    tooltipProps={{
+                      dataTooltipId: 'repositoryNameTextField'
+                    }}
+                    inputGroup={{ autoFocus: true }}
                   />
-                </Container>
+                  <FormInput.Text
+                    name="description"
+                    label={getString('description')}
+                    placeholder={getString('enterDescription')}
+                    tooltipProps={{
+                      dataTooltipId: 'repositoryDescriptionTextField'
+                    }}
+                  />
+                  <Container margin={{ top: 'medium', bottom: 'medium' }}>
+                    <Text>
+                      {getString('createRepoModal.branchLabel')}
+                      <strong>
+                        <Button
+                          text={branchName}
+                          icon="git-new-branch"
+                          rightIcon="chevron-down"
+                          variation={ButtonVariation.TERTIARY}
+                          size={ButtonSize.SMALL}
+                          iconProps={{ size: 14 }}
+                          tooltip={<BranchName currentBranchName={branchName} onSelect={name => setBranchName(name)} />}
+                          tooltipProps={{ interactionKind: 'click' }}
+                        />
+                      </strong>
+                      {getString('createRepoModal.branch')}
+                    </Text>
+                  </Container>
+                  <Render when={allowPublicResourceCreation}>
+                    <hr className={css.dividerContainer} />
+                    <Container>
+                      <FormInput.RadioGroup
+                        name="isPublic"
+                        label=""
+                        items={[
+                          {
+                            label: (
+                              <Container>
+                                <Layout.Horizontal>
+                                  <Icon name="git-clone-step" size={20} margin={{ right: 'medium' }} />
+                                  <Container>
+                                    <Layout.Vertical spacing="xsmall">
+                                      <Text>{getString('public')}</Text>
+                                      <Text font={{ variation: FontVariation.TINY }}>
+                                        {getString('createRepoModal.publicLabel')}
+                                      </Text>
+                                    </Layout.Vertical>
+                                  </Container>
+                                </Layout.Horizontal>
+                              </Container>
+                            ),
+                            value: RepoVisibility.PUBLIC
+                          },
+                          {
+                            label: (
+                              <Container>
+                                <Layout.Horizontal>
+                                  <Container margin={{ right: 'medium' }}>
+                                    <img width={20} height={20} src={Private} />
+                                  </Container>
+                                  {/* <Icon name="git-clone-step" size={20} margin={{ right: 'medium' }} /> */}
+                                  <Container margin={{ left: 'small' }}>
+                                    <Layout.Vertical spacing="xsmall">
+                                      <Text>{getString('private')}</Text>
+                                      <Text font={{ variation: FontVariation.TINY }}>
+                                        {getString('createRepoModal.privateLabel')}
+                                      </Text>
+                                    </Layout.Vertical>
+                                  </Container>
+                                </Layout.Horizontal>
+                              </Container>
+                            ),
+                            value: RepoVisibility.PRIVATE
+                          }
+                        ]}
+                      />
+                    </Container>
+                  </Render>
+                  <hr className={css.dividerContainer} />
 
-                <FormInput.Select
-                  name="license"
-                  label={getString('addLicense')}
-                  placeholder={getString('none')}
-                  items={licences || []}
-                  usePortal
-                />
+                  <FormInput.Select
+                    name="license"
+                    label={getString('addLicense')}
+                    placeholder={getString('none')}
+                    items={licences || []}
+                    usePortal
+                  />
 
-                <FormInput.Select
-                  name="gitignore"
-                  label={getString('addGitIgnore')}
-                  placeholder={getString('none')}
-                  items={(gitignores || []).map((entry: string) => ({ label: entry, value: entry }))}
-                  usePortal
-                />
+                  <FormInput.Select
+                    name="gitignore"
+                    label={getString('addGitIgnore')}
+                    placeholder={getString('none')}
+                    items={(gitignores || []).map((entry: string) => ({ label: entry, value: entry }))}
+                    usePortal
+                  />
 
-                <FormInput.CheckBox
-                  name="addReadme"
-                  label={getString('addReadMe')}
-                  tooltipProps={{
-                    dataTooltipId: 'addReadMe'
-                  }}
-                />
-                <Layout.Horizontal
-                  spacing="small"
-                  padding={{ right: 'xxlarge', top: 'xxxlarge', bottom: 'large' }}
-                  style={{ alignItems: 'center' }}>
-                  <Button type="submit" text={getString('createRepo')} intent={Intent.PRIMARY} disabled={loading} />
-                  <Button text={cancelButtonTitle || getString('cancel')} minimal onClick={hideModal} />
-                  <FlexExpander />
+                  <FormInput.CheckBox
+                    name="addReadme"
+                    label={getString('addReadMe')}
+                    tooltipProps={{
+                      dataTooltipId: 'addReadMe'
+                    }}
+                  />
+                  <hr className={css.dividerContainer} />
+                  <Layout.Horizontal
+                    spacing="small"
+                    padding={{ right: 'xxlarge', bottom: 'large' }}
+                    style={{ alignItems: 'center' }}>
+                    <Button type="submit" text={getString('createRepo')} intent={Intent.PRIMARY} disabled={loading} />
+                    <Button text={cancelButtonTitle || getString('cancel')} minimal onClick={hideModal} />
+                    <FlexExpander />
 
-                  {loading && <Icon intent={Intent.PRIMARY} name="spinner" size={16} />}
-                </Layout.Horizontal>
-              </FormikForm>
-            </Formik>
+                    {loading && <Icon intent={Intent.PRIMARY} name="steps-spinner" size={16} />}
+                  </Layout.Horizontal>
+                </FormikForm>
+              </Formik>
+            )}
           </Container>
         </Layout.Vertical>
       </Dialog>
     )
   }
+  const { getString } = useStrings()
 
-  const [openModal, hideModal] = useModalHook(ModalComponent, [onSubmit])
+  const repoCreateOptions: RepoCreationOption[] = [
+    {
+      type: RepoCreationType.CREATE,
+      title: getString('newRepo'),
+      desc: getString('createARepo')
+    },
+    {
+      type: RepoCreationType.IMPORT,
+      title: getString('importGitRepo'),
+      desc: getString('importGitRepo')
+    },
+    {
+      type: RepoCreationType.IMPORT_MULTIPLE,
+      title: getString('importGitRepos'),
+      desc: getString('importGitRepos')
+    }
+  ]
+  const [repoOption, setRepoOption] = useState<RepoCreationOption>(repoCreateOptions[0])
+
+  const [openModal, hideModal] = useModalHook(ModalComponent, [onSubmit, repoOption])
   const { standalone } = useAppContext()
   const { hooks } = useAppContext()
   const permResult = hooks?.usePermissionTranslate?.(
@@ -299,12 +474,63 @@ export const NewRepoModalButton: React.FC<NewRepoModalButtonProps> = ({
       resource: {
         resourceType: 'CODE_REPOSITORY'
       },
-      permissions: ['code_repo_push']
+      permissions: ['code_repo_create']
     },
     [space]
   )
 
-  return <Button onClick={openModal} {...props} {...permissionProps(permResult, standalone)} />
+  return props?.repoCreationType ? (
+    <>
+      {props?.customRenderer?.(e => {
+        e.preventDefault()
+        e.stopPropagation()
+        setRepoOption(repoCreateOptions.find(option => option.type === props?.repoCreationType) || repoCreateOptions[0])
+        setTimeout(() => openModal(), 0)
+      })}
+    </>
+  ) : (
+    <SplitButton
+      {...props}
+      loading={false}
+      text={
+        <Text color={Color.WHITE} font={{ variation: FontVariation.BODY2_SEMI, weight: 'bold' }}>
+          {repoCreateOptions[0].title}
+        </Text>
+      }
+      variation={ButtonVariation.PRIMARY}
+      popoverProps={{
+        interactionKind: 'click',
+        usePortal: true,
+        popoverClassName: css.popover,
+        position: PopoverPosition.BOTTOM_RIGHT
+      }}
+      icon={'plus'}
+      {...permissionProps(permResult, standalone)}
+      onClick={() => {
+        setRepoOption(repoCreateOptions[0])
+        setTimeout(() => openModal(), 0)
+      }}>
+      {[repoCreateOptions[1], repoCreateOptions[2]].map(option => {
+        return (
+          <Menu.Item
+            className={css.menuItem}
+            key={option.type}
+            text={<Text font={{ variation: FontVariation.BODY2 }}>{option.desc}</Text>}
+            onClick={() => {
+              setRepoOption(option)
+              setTimeout(() => openModal(), 0)
+            }}
+          />
+        )
+      })}
+    </SplitButton>
+  )
+}
+
+interface RepoCreationOption {
+  type: RepoCreationType
+  title: string
+  desc: string
 }
 
 interface BranchNameProps {
@@ -359,3 +585,5 @@ const BranchName: React.FC<BranchNameProps> = ({ currentBranchName, onSelect }) 
     </Container>
   )
 }
+
+export default NewRepoModalButton

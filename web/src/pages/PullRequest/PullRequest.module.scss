@@ -1,62 +1,25 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 .main {
-  min-height: var(--page-min-height, 100%);
-  background-color: var(--white) !important;
+  min-height: var(--page-height);
 
-  > div[class*='PageHeader'] {
+  > div[class*='PageHeader'],
+  [data-testid='page-header'] {
     border-bottom: none !important;
-  }
-
-  .tabsContainer {
-    min-height: calc(100vh - 97px);
-    background-color: var(--primary-bg) !important;
-
-    > div > div[role='tablist'] {
-      background-color: var(--white) !important;
-      padding-left: var(--spacing-medium) !important;
-      padding-right: var(--spacing-xlarge) !important;
-      border-bottom: 1px solid var(--grey-200) !important;
-    }
-
-    > div > div[role='tabpanel'] {
-      margin-top: 0;
-    }
-
-    [aria-selected='true'] {
-      .tabTitle,
-      .tabTitle:hover {
-        color: var(--grey-900) !important;
-        font-weight: 600 !important;
-      }
-    }
-
-    .tabTitle {
-      font-weight: 500;
-      color: var(--grey-700);
-      display: flex;
-      align-items: center;
-      height: 24px;
-      margin-top: var(--spacing-8);
-
-      > svg {
-        display: inline-block;
-        margin-right: 5px;
-      }
-
-      .count {
-        margin-left: var(--spacing-small);
-        display: inline-block;
-        border-radius: 8px;
-        font-weight: 500;
-        font-size: var(--font-size-small);
-        color: var(--primary-7) !important;
-        background-color: var(--primary-1) !important;
-        padding: 3px 6px !important;
-      }
-    }
-
-    .tabTitle:not:first-child {
-      margin-left: var(--spacing-8) !important;
-    }
   }
 }
 
@@ -87,8 +50,56 @@
       line-height: 22px !important;
     }
   }
+
+  .titleText {
+    flex-shrink: 0;
+    max-width: calc(var(--page-container-width) - 200px);
+  }
+
+  .addDesc {
+    white-space: nowrap;
+  }
 }
 
 .changes {
   padding: 0 var(--spacing-xlarge) var(--spacing-xlarge) !important;
 }
+
+.checksCount {
+  border: 1px solid var(--grey-100);
+  background-color: var(--grey-50) !important;
+  display: inline-flex;
+  margin-left: 8px !important;
+  border-radius: 4px;
+  padding: 2px 5px 0 !important;
+
+  .checksCountLayout {
+    display: inline-flex;
+    height: 18px;
+    align-items: center;
+    justify-content: center;
+
+    > span {
+      padding: 0 !important;
+      margin: 0 !important;
+      align-self: flex-start;
+      line-height: 16px !important;
+
+      &:last-of-type {
+        padding-left: 5px !important;
+      }
+    }
+  }
+}
+
+.popover {
+  :global {
+    .bp3-popover-content {
+      padding: var(--spacing-medium);
+      max-width: 700px;
+      word-break: break-all;
+    }
+  }
+}
+
+@import './PullRequest.custom.scss'; // GITFOX+

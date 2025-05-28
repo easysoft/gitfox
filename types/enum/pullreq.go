@@ -1,11 +1,21 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package enum
 
 import (
-	gitrpcenum "github.com/harness/gitness/gitrpc/enum"
+	gitenum "github.com/easysoft/gitfox/git/enum"
 )
 
 // PullReqState defines pull request state.
@@ -41,6 +51,7 @@ const (
 	PullReqSortCreated = "created"
 	PullReqSortEdited  = "edited"
 	PullReqSortMerged  = "merged"
+	PullReqSortUpdated = "updated"
 )
 
 var pullReqSorts = sortEnum([]PullReqSort{
@@ -48,6 +59,7 @@ var pullReqSorts = sortEnum([]PullReqSort{
 	PullReqSortCreated,
 	PullReqSortEdited,
 	PullReqSortMerged,
+	PullReqSortUpdated,
 })
 
 // PullReqActivityType defines pull request activity message type.
@@ -66,14 +78,18 @@ func GetAllPullReqActivityTypes() ([]PullReqActivityType, PullReqActivityType) {
 
 // PullReqActivityType enumeration.
 const (
-	PullReqActivityTypeComment      PullReqActivityType = "comment"
-	PullReqActivityTypeCodeComment  PullReqActivityType = "code-comment"
-	PullReqActivityTypeTitleChange  PullReqActivityType = "title-change"
-	PullReqActivityTypeStateChange  PullReqActivityType = "state-change"
-	PullReqActivityTypeReviewSubmit PullReqActivityType = "review-submit"
-	PullReqActivityTypeBranchUpdate PullReqActivityType = "branch-update"
-	PullReqActivityTypeBranchDelete PullReqActivityType = "branch-delete"
-	PullReqActivityTypeMerge        PullReqActivityType = "merge"
+	PullReqActivityTypeComment        PullReqActivityType = "comment"
+	PullReqActivityTypeCodeComment    PullReqActivityType = "code-comment"
+	PullReqActivityTypeTitleChange    PullReqActivityType = "title-change"
+	PullReqActivityTypeStateChange    PullReqActivityType = "state-change"
+	PullReqActivityTypeReviewSubmit   PullReqActivityType = "review-submit"
+	PullReqActivityTypeReviewerAdd    PullReqActivityType = "reviewer-add"
+	PullReqActivityTypeReviewerDelete PullReqActivityType = "reviewer-delete"
+	PullReqActivityTypeBranchUpdate   PullReqActivityType = "branch-update"
+	PullReqActivityTypeBranchDelete   PullReqActivityType = "branch-delete"
+	PullReqActivityTypeBranchRestore  PullReqActivityType = "branch-restore"
+	PullReqActivityTypeMerge          PullReqActivityType = "merge"
+	PullReqActivityTypeLabelModify    PullReqActivityType = "label-modify"
 )
 
 var pullReqActivityTypes = sortEnum([]PullReqActivityType{
@@ -82,9 +98,13 @@ var pullReqActivityTypes = sortEnum([]PullReqActivityType{
 	PullReqActivityTypeTitleChange,
 	PullReqActivityTypeStateChange,
 	PullReqActivityTypeReviewSubmit,
+	PullReqActivityTypeReviewerAdd,
+	PullReqActivityTypeReviewerDelete,
 	PullReqActivityTypeBranchUpdate,
 	PullReqActivityTypeBranchDelete,
+	PullReqActivityTypeBranchRestore,
 	PullReqActivityTypeMerge,
+	PullReqActivityTypeLabelModify,
 })
 
 // PullReqActivityKind defines kind of pull request activity system message.
@@ -195,11 +215,26 @@ var pullReqReviewerTypes = sortEnum([]PullReqReviewerType{
 	PullReqReviewerTypeSelfAssigned,
 })
 
-type MergeMethod gitrpcenum.MergeMethod
+type MergeMethod gitenum.MergeMethod
 
-func (MergeMethod) Enum() []interface{} { return toInterfaceSlice(gitrpcenum.MergeMethods) }
+// MergeMethod enumeration.
+const (
+	MergeMethodMerge       = MergeMethod(gitenum.MergeMethodMerge)
+	MergeMethodSquash      = MergeMethod(gitenum.MergeMethodSquash)
+	MergeMethodRebase      = MergeMethod(gitenum.MergeMethodRebase)
+	MergeMethodFastForward = MergeMethod(gitenum.MergeMethodFastForward)
+)
+
+var MergeMethods = sortEnum([]MergeMethod{
+	MergeMethodMerge,
+	MergeMethodSquash,
+	MergeMethodRebase,
+	MergeMethodFastForward,
+})
+
+func (MergeMethod) Enum() []interface{} { return toInterfaceSlice(MergeMethods) }
 func (m MergeMethod) Sanitize() (MergeMethod, bool) {
-	s, ok := gitrpcenum.MergeMethod(m).Sanitize()
+	s, ok := gitenum.MergeMethod(m).Sanitize()
 	return MergeMethod(s), ok
 }
 
@@ -213,3 +248,44 @@ const (
 	// MergeCheckStatusMergeable branch can merged cleanly into the target branch.
 	MergeCheckStatusMergeable MergeCheckStatus = "mergeable"
 )
+
+// PullRequestFlow the flow of pull request
+type PullRequestFlow int
+
+const (
+	// PullRequestFlowGithub github flow from head branch to base branch
+	PullRequestFlowGithub PullRequestFlow = iota
+	// PullRequestFlowZentao Zentao flow pull request, head branch is not exist
+	PullRequestFlowZentao
+)
+
+func (p PullRequestFlow) String() string {
+	if p == PullRequestFlowGithub {
+		return "default"
+	}
+	return "ztflow"
+}
+
+type PullReqLabelActivityType string
+
+func (PullReqLabelActivityType) Enum() []interface{} { return toInterfaceSlice(LabelActivityTypes) }
+func (t PullReqLabelActivityType) Sanitize() (PullReqLabelActivityType, bool) {
+	return Sanitize(t, GetAllLabelActivityTypes)
+}
+func GetAllLabelActivityTypes() ([]PullReqLabelActivityType, PullReqLabelActivityType) {
+	return LabelActivityTypes, LabelActivityNoop
+}
+
+const (
+	LabelActivityAssign   PullReqLabelActivityType = "assign"
+	LabelActivityUnassign PullReqLabelActivityType = "unassign"
+	LabelActivityReassign PullReqLabelActivityType = "reassign"
+	LabelActivityNoop     PullReqLabelActivityType = "noop"
+)
+
+var LabelActivityTypes = sortEnum([]PullReqLabelActivityType{
+	LabelActivityAssign,
+	LabelActivityUnassign,
+	LabelActivityReassign,
+	LabelActivityNoop,
+})

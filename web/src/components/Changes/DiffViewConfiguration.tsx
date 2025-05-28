@@ -1,5 +1,22 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import React from 'react'
-import { Container, Layout, Text, FontVariation, FlexExpander } from '@harness/uicore'
+import { Container, Layout, Text, FlexExpander } from '@harnessio/uicore'
+import { FontVariation } from '@harnessio/design-system'
 import { ButtonGroup, Button as BButton, Classes } from '@blueprintjs/core'
 import cx from 'classnames'
 import { useStrings } from 'framework/strings'
@@ -15,9 +32,9 @@ interface DiffViewConfigurationProps {
 
 export const DiffViewConfiguration: React.FC<DiffViewConfigurationProps> = ({
   viewStyle,
-  setViewStyle,
-  lineBreaks,
-  setLineBreaks
+  setViewStyle
+  // lineBreaks,
+  // setLineBreaks
 }) => {
   const { getString } = useStrings()
 
@@ -53,6 +70,10 @@ export const DiffViewConfiguration: React.FC<DiffViewConfigurationProps> = ({
                 </ButtonGroup>
               </Layout.Horizontal>
             </Container>
+            {/* 
+            // TODO: Line break barely works. Disable until we find a complete solution for it
+            // https://harness.atlassian.net/browse/CODE-1452
+            // [css.enableDiffLineBreaks]: lineBreaks && viewStyle === ViewStyle.SIDE_BY_SIDE
             <Container>
               <Layout.Horizontal spacing="xsmall" flex={{ alignItems: 'center' }}>
                 <Text font={{ variation: FontVariation.SMALL_BOLD }}>{getString('lineBreaks')}</Text>
@@ -70,7 +91,7 @@ export const DiffViewConfiguration: React.FC<DiffViewConfigurationProps> = ({
                   </BButton>
                 </ButtonGroup>
               </Layout.Horizontal>
-            </Container>
+            </Container> */}
           </Layout.Vertical>
         </Container>
       }

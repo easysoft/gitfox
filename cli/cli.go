@@ -1,60 +1,32 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package cli
 
 import (
 	"os"
 
-	"github.com/harness/gitness/cli/operations/account"
-	"github.com/harness/gitness/cli/operations/hooks"
-	"github.com/harness/gitness/cli/operations/migrate"
-	"github.com/harness/gitness/cli/operations/user"
-	"github.com/harness/gitness/cli/operations/users"
-	"github.com/harness/gitness/cli/server"
-	"github.com/harness/gitness/internal/githook"
-	"github.com/harness/gitness/version"
-
-	"gopkg.in/alecthomas/kingpin.v2"
+	"github.com/easysoft/gitfox/cli/operations/hooks"
+	"github.com/easysoft/gitfox/git/hook"
 )
 
-const (
-	application = "gitness"
-	description = "description goes here" // TODO edit this application description
-)
-
-// Command parses the command line arguments and then executes a
-// subcommand program.
-func Command() {
-	args := getArguments()
-
-	app := kingpin.New(application, description)
-
-	migrate.Register(app)
-	server.Register(app)
-
-	user.Register(app)
-	users.Register(app)
-
-	account.RegisterLogin(app)
-	account.RegisterRegister(app)
-	account.RegisterLogout(app)
-
-	hooks.Register(app)
-
-	registerSwagger(app)
-
-	kingpin.Version(version.Version.String())
-	kingpin.MustParse(app.Parse(args))
-}
-
-func getArguments() []string {
+func GetArguments() []string {
 	command := os.Args[0]
 	args := os.Args[1:]
 
-	// in case of githooks, translate the arguments coming from git to work with gitness.
-	if gitArgs, fromGit := githook.SanitizeArgsForGit(command, args); fromGit {
+	// in case of githooks, translate the arguments coming from git to work with gitfox.
+	if gitArgs, fromGit := hook.SanitizeArgsForGit(command, args); fromGit {
 		return append([]string{hooks.ParamHooks}, gitArgs...)
 	}
 

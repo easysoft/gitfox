@@ -1,18 +1,52 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 .header {
-  border-bottom: 1px solid var(--grey-200);
-  padding: var(--spacing-medium) var(--spacing-xlarge) 0 var(--spacing-xlarge) !important;
-  background: var(--white) !important;
+  --typography-color: var(--color-canvas);
+  height: 48px;
+  background-color: var(--color-primary-500) !important;
+  color: var(--color-canvas) !important;
+  padding: 0 var(--spacing-xlarge) !important;
+  display: flex;
+  align-items: center;
+
+  a,
+  a:hover,
+  a:visited {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--color-canvas);
+  }
 }
 
 .breadcrumb {
   align-items: center;
+  > * {
+    color: var(--color-canvas) !important;
+  }
 }
 
 .repoDropdown {
-  color: var(--grey-700) !important;
-  font-size: 18px !important;
+  font-size: 13px !important;
   line-height: 28px !important;
+  color: var(--color-canvas) !important;
   cursor: pointer;
+  margin-left: 0 !important;
 
   span[icon] {
     padding-top: 2px;

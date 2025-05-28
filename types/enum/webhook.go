@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package enum
 
@@ -11,7 +21,12 @@ type WebhookAttr int
 
 const (
 	WebhookAttrNone WebhookAttr = iota
+	// TODO [CODE-1364]: Remove once UID/Identifier migration is completed.
 	WebhookAttrID
+	// TODO [CODE-1363]: remove after identifier migration.
+	WebhookAttrUID
+	WebhookAttrIdentifier
+	// TODO [CODE-1364]: Remove once UID/Identifier migration is completed.
 	WebhookAttrDisplayName
 	WebhookAttrCreated
 	WebhookAttrUpdated
@@ -21,8 +36,15 @@ const (
 // and returns the equivalent enumeration.
 func ParseWebhookAttr(s string) WebhookAttr {
 	switch strings.ToLower(s) {
+	// TODO [CODE-1364]: Remove once UID/Identifier migration is completed.
 	case id:
 		return WebhookAttrID
+	// TODO [CODE-1363]: remove after identifier migration.
+	case uid:
+		return WebhookAttrUID
+	case identifier:
+		return WebhookAttrIdentifier
+	// TODO [CODE-1364]: Remove once UID/Identifier migration is completed.
 	case displayName:
 		return WebhookAttrDisplayName
 	case created, createdAt:
@@ -37,8 +59,15 @@ func ParseWebhookAttr(s string) WebhookAttr {
 // String returns the string representation of the attribute.
 func (a WebhookAttr) String() string {
 	switch a {
+	// TODO [CODE-1364]: Remove once UID/Identifier migration is completed.
 	case WebhookAttrID:
 		return id
+	// TODO [CODE-1363]: remove after identifier migration.
+	case WebhookAttrUID:
+		return uid
+	case WebhookAttrIdentifier:
+		return identifier
+	// TODO [CODE-1364]: Remove once UID/Identifier migration is completed.
 	case WebhookAttrDisplayName:
 		return displayName
 	case WebhookAttrCreated:
@@ -123,6 +152,27 @@ const (
 	WebhookTriggerPullReqReopened WebhookTrigger = "pullreq_reopened"
 	// WebhookTriggerPullReqBranchUpdated gets triggered when a pull request source branch gets updated.
 	WebhookTriggerPullReqBranchUpdated WebhookTrigger = "pullreq_branch_updated"
+	// WebhookTriggerPullReqClosed gets triggered when a pull request is closed.
+	WebhookTriggerPullReqClosed WebhookTrigger = "pullreq_closed"
+	// WebhookTriggerPullReqCommentCreated gets triggered when a pull request comment gets created.
+	WebhookTriggerPullReqCommentCreated WebhookTrigger = "pullreq_comment_created"
+	// WebhookTriggerPullReqCommentUpdated gets triggered when a pull request comment gets edited.
+	WebhookTriggerPullReqCommentUpdated WebhookTrigger = "pullreq_comment_updated"
+	// WebhookTriggerPullReqCommentStatusUpdated gets triggered when a pull request comment status gets updated.
+	WebhookTriggerPullReqCommentStatusUpdated WebhookTrigger = "pullreq_comment_status_updated"
+	// WebhookTriggerPullReqMerged gets triggered when a pull request is merged.
+	WebhookTriggerPullReqMerged WebhookTrigger = "pullreq_merged"
+	// WebhookTriggerPullReqUpdated gets triggered when a pull request gets updated.
+	WebhookTriggerPullReqUpdated WebhookTrigger = "pullreq_updated"
+	// WebhookTriggerPullReqLabelAssigned gets triggered when a label is assigned to a pull request.
+	WebhookTriggerPullReqLabelAssigned WebhookTrigger = "pullreq_label_assigned"
+
+	// WebhookTriggerPullReqReviewerCreated gets triggered when a reviewer is added to a pull request.
+	WebhookTriggerPullReqReviewerCreated WebhookTrigger = "pullreq_reviewer_created"
+	// WebhookTriggerPullReqReviewerDeleted gets triggered when a reviewer is removed from a pull request.
+	WebhookTriggerPullReqReviewerDeleted WebhookTrigger = "pullreq_reviewer_deleted"
+	// WebhookTriggerPullReqReviewSubmitted gets triggered when a review is submitted for a pull request.
+	WebhookTriggerPullReqReviewSubmitted WebhookTrigger = "pullreq_review_submitted"
 )
 
 var webhookTriggers = sortEnum([]WebhookTrigger{
@@ -133,6 +183,16 @@ var webhookTriggers = sortEnum([]WebhookTrigger{
 	WebhookTriggerTagUpdated,
 	WebhookTriggerTagDeleted,
 	WebhookTriggerPullReqCreated,
+	WebhookTriggerPullReqUpdated,
 	WebhookTriggerPullReqReopened,
 	WebhookTriggerPullReqBranchUpdated,
+	WebhookTriggerPullReqClosed,
+	WebhookTriggerPullReqCommentCreated,
+	WebhookTriggerPullReqCommentUpdated,
+	WebhookTriggerPullReqCommentStatusUpdated,
+	WebhookTriggerPullReqMerged,
+	WebhookTriggerPullReqLabelAssigned,
+	WebhookTriggerPullReqReviewerCreated,
+	WebhookTriggerPullReqReviewerDeleted,
+	WebhookTriggerPullReqReviewSubmitted,
 })

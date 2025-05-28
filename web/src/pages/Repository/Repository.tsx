@@ -1,240 +1,175 @@
-import React, { useEffect, useState } from 'react'
-import { Link, useHistory } from 'react-router-dom'
-import {
-  Button,
-  ButtonVariation,
-  Container,
-  FlexExpander,
-  FontVariation,
-  Layout,
-  PageBody,
-  StringSubstitute,
-  Text
-} from '@harness/uicore'
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import React, { useEffect, useRef, useState } from 'react'
+import { Button, ButtonVariation, Container, Layout, PageBody, StringSubstitute, Text } from '@harnessio/uicore'
 import { Falsy, Match, Truthy } from 'react-jsx-match'
 import cx from 'classnames'
+import { useHistory } from 'react-router-dom'
 import { useGetResourceContent } from 'hooks/useGetResourceContent'
-import { voidFn, getErrorMessage, permissionProps } from 'utils/Utils'
-import { useAppContext } from 'AppContext'
+import { getErrorMessage } from 'utils/Utils'
 import { useGetRepositoryMetadata } from 'hooks/useGetRepositoryMetadata'
 import { LoadingSpinner } from 'components/LoadingSpinner/LoadingSpinner'
 import { useStrings } from 'framework/strings'
-import type { OpenapiGetContentOutput, TypesRepository } from 'services/code'
-import { MarkdownViewer } from 'components/MarkdownViewer/MarkdownViewer'
-import { CodeIcon, GitInfoProps } from 'utils/GitUtils'
-import { useDisableCodeMainLinks } from 'hooks/useDisableCodeMainLinks'
-import { useGetSpaceParam } from 'hooks/useGetSpaceParam'
-import { CopyButton } from 'components/CopyButton/CopyButton'
-import CloneCredentialDialog from 'components/CloneCredentialDialog/CloneCredentialDialog'
+import type { OpenapiGetContentOutput, RepoRepositoryOutput } from 'services/code'
 import { Images } from 'images'
+import { useSetPageContainerWidthVar } from 'hooks/useSetPageContainerWidthVar'
+import { normalizeGitRef, isDir } from 'utils/GitUtils'
+import { useAppContext } from 'AppContext'
 import { RepositoryContent } from './RepositoryContent/RepositoryContent'
 import { RepositoryHeader } from './RepositoryHeader/RepositoryHeader'
 import { ContentHeader } from './RepositoryContent/ContentHeader/ContentHeader'
+import { EmptyRepositoryInfo } from './EmptyRepositoryInfo'
 import css from './Repository.module.scss'
 
+enum NotFoundType {
+  BRANCH = 'branchNotFound',
+  FILE = 'fileNotFound',
+  NONE = 'none'
+}
+const regexPatterns = {
+  branchNotFound: /revision "refs\/heads\/[^"]+" not found/,
+  pathNotFound: /path '[^']+' wasn't found in the repo/
+}
+
 export default function Repository() {
-  const { gitRef, resourcePath, repoMetadata, error, loading, refetch } = useGetRepositoryMetadata()
+  const { gitRef, resourcePath, repoMetadata, error, loading, refetch, commitRef } = useGetRepositoryMetadata()
+  const { routes } = useAppContext()
+  const history = useHistory()
   const {
     data: resourceContent,
     error: resourceError,
     loading: resourceLoading,
-    isRepositoryEmpty
-  } = useGetResourceContent({ repoMetadata, gitRef, resourcePath, includeCommit: true })
-  const [fileNotExist, setFileNotExist] = useState(false)
+    isRepositoryEmpty,
+    refetch: refetchContent
+  } = useGetResourceContent({
+    repoMetadata,
+    gitRef: normalizeGitRef(gitRef) as string,
+    resourcePath,
+    includeCommit: true
+  })
   const { getString } = useStrings()
+  const domRef = useRef<HTMLDivElement>(null)
+
+  const [notFoundError, setNotFoundError] = useState(NotFoundType.NONE)
+  const isBranchNotFoundError = () => regexPatterns.branchNotFound.test(resourceError?.data.message as string)
+  const isPathNotFoundError = () => regexPatterns.pathNotFound.test(resourceError?.data.message as string)
 
   useEffect(() => {
-    if (resourceError?.status === 404) {
-      setFileNotExist(true)
+    if (resourceError?.status === 404 && !isRepositoryEmpty) {
+      if (isPathNotFoundError()) {
+        setNotFoundError(NotFoundType.FILE)
+      }
+      if (isBranchNotFoundError()) {
+        setNotFoundError(NotFoundType.BRANCH)
+      }
     } else {
-      setFileNotExist(false)
+      setNotFoundError(NotFoundType.NONE)
     }
-  }, [resourceError])
+  }, [resourceError, repoMetadata, gitRef])
+
+  useSetPageContainerWidthVar({ domRef })
 
   return (
-    <Container className={cx(css.main, !!resourceContent && css.withFileViewer)}>
-      <Match expr={fileNotExist}>
+    <Container className={cx(css.main, !!resourceContent && css.withFileViewer)} ref={domRef}>
+      <Match expr={resourceError?.status === 404}>
         <Truthy>
-          <RepositoryHeader repoMetadata={repoMetadata as TypesRepository} />
+          <RepositoryHeader isFile={false} repoMetadata={repoMetadata as RepoRepositoryOutput} />
           <Layout.Vertical>
-            <Container className={css.bannerContainer} padding={{ left: 'xlarge' }}>
-              <Text font={'small'} padding={{ left: 'large' }}>
-                <StringSubstitute
-                  str={getString('branchDoesNotHaveFile')}
-                  vars={{
-                    repoName: repoMetadata?.uid,
-                    fileName: resourcePath,
-                    branchName: gitRef
-                  }}
-                />
-              </Text>
-            </Container>
             <Container padding={{ left: 'xlarge' }}>
               <ContentHeader
-                repoMetadata={repoMetadata as TypesRepository}
+                repoMetadata={repoMetadata as RepoRepositoryOutput}
                 gitRef={gitRef}
                 resourcePath={resourcePath}
                 resourceContent={resourceContent as OpenapiGetContentOutput}
               />
+              {notFoundError === NotFoundType.FILE && (
+                <Container className={css.bannerContainer} padding={{ left: 'xlarge' }}>
+                  <Text font={'small'} padding={{ left: 'large' }}>
+                    <StringSubstitute
+                      str={getString('branchDoesNotHaveFile')}
+                      vars={{
+                        repoName: repoMetadata?.identifier,
+                        fileName: resourcePath,
+                        branchName: gitRef
+                      }}
+                    />
+                  </Text>
+                </Container>
+              )}
             </Container>
             <PageBody
               noData={{
-                when: () => fileNotExist === true,
-                message: getString('error404Text'),
-                image: Images.error404
+                when: () => notFoundError !== NotFoundType.NONE,
+                messageTitle:
+                  notFoundError === NotFoundType.BRANCH ? getString('branchNotFoundError') : getString('pageNotFound'),
+                message:
+                  notFoundError === NotFoundType.BRANCH
+                    ? getString('branchNotFoundMessage', { gitRef })
+                    : getString('error404Text'),
+                image: Images.error404,
+                button: (
+                  <Button
+                    variation={ButtonVariation.PRIMARY}
+                    text={getString('goToDefaultBranch')}
+                    onClick={() => {
+                      history.replace(
+                        routes.toCODERepository({
+                          repoPath: repoMetadata?.path as string,
+                          gitRef: repoMetadata?.default_branch
+                        })
+                      )
+                    }}
+                  />
+                )
               }}></PageBody>
           </Layout.Vertical>
         </Truthy>
         <Falsy>
-          <PageBody error={getErrorMessage(error || resourceError)} retryOnError={voidFn(refetch)}>
-            <LoadingSpinner visible={loading || resourceLoading} withBorder={!!resourceContent && resourceLoading} />
+          <PageBody
+            error={getErrorMessage(error || resourceError)}
+            retryOnError={() => (error ? refetch() : refetchContent())}>
+            <LoadingSpinner
+              visible={loading || resourceLoading}
+              withBorder={!!resourceContent && resourceLoading}
+              className={cx(css.spinner, { [css.withBorder]: !!resourceContent && resourceLoading })}
+            />
 
             {!!repoMetadata && (
               <>
-                <RepositoryHeader repoMetadata={repoMetadata} />
-
+                <RepositoryHeader
+                  repoMetadata={repoMetadata}
+                  isFile={!isDir(resourceContent)}
+                  className={css.headerContainer}
+                />
                 {!!resourceContent && (
                   <RepositoryContent
                     repoMetadata={repoMetadata}
                     gitRef={gitRef}
                     resourcePath={resourcePath}
                     resourceContent={resourceContent}
+                    commitRef={commitRef}
                   />
                 )}
-
                 {isRepositoryEmpty && <EmptyRepositoryInfo repoMetadata={repoMetadata} />}
               </>
             )}
           </PageBody>
         </Falsy>
       </Match>
-    </Container>
-  )
-}
-
-const EmptyRepositoryInfo: React.FC<Pick<GitInfoProps, 'repoMetadata'>> = ({ repoMetadata }) => {
-  const history = useHistory()
-  const { routes } = useAppContext()
-  const { getString } = useStrings()
-  const { currentUserProfileURL } = useAppContext()
-  const newFileURL = routes.toCODEFileEdit({
-    repoPath: repoMetadata.path as string,
-    gitRef: repoMetadata.default_branch as string,
-    resourcePath: ''
-  })
-  const { standalone } = useAppContext()
-  const { hooks } = useAppContext()
-  const space = useGetSpaceParam()
-  const [flag, setFlag] = useState(false)
-
-  const permPushResult = hooks?.usePermissionTranslate?.(
-    {
-      resource: {
-        resourceType: 'CODE_REPOSITORY'
-      },
-      permissions: ['code_repo_push']
-    },
-    [space]
-  )
-  useDisableCodeMainLinks(true)
-  return (
-    <Container className={css.emptyRepo}>
-      <Container
-        margin={{ bottom: 'xxlarge' }}
-        padding={{ top: 'xxlarge', bottom: 'xxlarge', left: 'xxlarge', right: 'xxlarge' }}
-        className={css.divContainer}>
-        <Text font={{ variation: FontVariation.H5 }}>{getString('emptyRepoHeader')}</Text>
-        <Layout.Horizontal padding={{ top: 'large' }}>
-          <Button
-            variation={ButtonVariation.PRIMARY}
-            text={getString('addNewFile')}
-            onClick={() => history.push(newFileURL)}
-            {...permissionProps(permPushResult, standalone)}></Button>
-
-          <Container padding={{ left: 'medium', top: 'small' }}>
-            <Text className={css.textContainer}>
-              <StringSubstitute
-                str={getString('emptyRepoInclude')}
-                vars={{
-                  README: <Link to={newFileURL + `?name=README.md`}>README</Link>,
-                  LICENSE: <Link to={newFileURL + `?name=LICENSE.md`}>LICENSE</Link>,
-                  GITIGNORE: <Link to={newFileURL + `?name=.gitignore`}>.gitignore</Link>
-                }}
-              />
-            </Text>
-          </Container>
-        </Layout.Horizontal>
-      </Container>
-      <Container
-        margin={{ bottom: 'xxlarge' }}
-        padding={{ top: 'xxlarge', bottom: 'xxlarge', left: 'xxlarge', right: 'xxlarge' }}
-        className={css.divContainer}>
-        <Text font={{ variation: FontVariation.H4 }}>{getString('firstTimeTitle')}</Text>
-        <Text
-          className={css.text}
-          padding={{ top: 'medium', bottom: 'small' }}
-          font={{ variation: FontVariation.BODY }}>
-          {getString('cloneHTTPS')}
-        </Text>
-        <Layout.Horizontal>
-          <Container padding={{ bottom: 'medium' }} width={400} margin={{ right: 'small' }}>
-            <Layout.Horizontal className={css.layout}>
-              <Text className={css.url}>{repoMetadata.git_url}</Text>
-              <FlexExpander />
-              <CopyButton
-                content={repoMetadata?.git_url as string}
-                id={css.cloneCopyButton}
-                icon={CodeIcon.Copy}
-                iconProps={{ size: 14 }}
-              />
-            </Layout.Horizontal>
-          </Container>
-          {standalone ? null : (
-            <Button
-              onClick={() => {
-                setFlag(true)
-              }}
-              variation={ButtonVariation.SECONDARY}>
-              {getString('generateCloneCred')}
-            </Button>
-          )}
-        </Layout.Horizontal>
-        <Text font={{ variation: FontVariation.BODY, size: 'small' }}>
-          <StringSubstitute
-            str={getString('manageCredText')}
-            vars={{
-              URL: (
-                <a
-                  onClick={() => {
-                    history.push(currentUserProfileURL)
-                  }}>
-                  here
-                </a>
-              )
-            }}
-          />
-        </Text>
-      </Container>
-      <Container
-        margin={{ bottom: 'xxlarge' }}
-        padding={{ top: 'xxlarge', bottom: 'xxlarge', left: 'xxlarge', right: 'xxlarge' }}
-        className={css.divContainer}>
-        <MarkdownViewer
-          source={getString('repoEmptyMarkdownClonePush').replace(/REPO_NAME/g, repoMetadata.uid || '')}
-        />
-      </Container>
-      <Container
-        margin={{ bottom: 'xxlarge' }}
-        padding={{ top: 'xxlarge', bottom: 'xxlarge', left: 'xxlarge', right: 'xxlarge' }}
-        className={css.divContainer}>
-        <MarkdownViewer
-          source={getString('repoEmptyMarkdownExisting')
-            .replace(/REPO_URL/g, repoMetadata.git_url || '')
-            .replace(/REPO_NAME/g, repoMetadata.uid || '')
-            .replace(/CREATE_API_TOKEN_URL/g, currentUserProfileURL || '')}
-        />
-      </Container>
-      <CloneCredentialDialog flag={flag} setFlag={setFlag} />
     </Container>
   )
 }

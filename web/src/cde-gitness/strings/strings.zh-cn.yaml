@@ -1,0 +1,125 @@
+branchPlaceholder: 分支
+lastUsed: 最后使用
+introText1: 准备好在几秒钟内编码
+introText2: 隔离的云开发环境，使用您喜欢的编辑器
+introText3: 几秒钟内连接到一个仓库
+cloudDeveloperExperience: 云开发环境
+createGitspace: 创建 Gitspace
+deleteGitspace: 删除 Gitspace
+editGitspace: 编辑 Gitspace
+viewGitspace: 查看 Gitspace 详情
+updateGitspace: 更新 Gitspace
+gitspaces: Gitspaces
+noRepo: 没有 Git 仓库？
+createRepo: 在 Harness 中创建仓库
+newGitspace: + 新 Gitspace
+manageGitspaces: 管理 Gitspaces
+noGitspaces: 您尚未创建任何 Gitspace
+gitspaceDetail: Gitspace 详情
+machine: 机器
+region: 区域
+or: 或
+logs: 日志
+noData: 无数据
+noChange: 无更改
+used: 已使用
+hours: 小时
+na: 不适用
+retry: 重试
+eventTimeline: 事件时间线
+cpu: CPU
+memory: 内存
+disk: 磁盘
+regionSelectWarning: 请先选择区域
+gitspaceUpdateSuccess: Gitspace 更新成功
+regionValidationMessage: 区域为必填项
+repoValidationMessage: 仓库为必填项
+branchValidationMessage: 分支为必填项
+machineValidationMessage: 机器类型为必填项
+startingGitspace: 启动 Gitspace
+stopingGitspace: 停止 Gitspace
+sessionDuration: 最后启动
+lastActivated: 最后激活
+deleteGitspaceTitle: 删除 Gitspace '{{name}}'
+deleteGitspaceText: '此操作无法撤销。您确定要继续删除吗？'
+deleteSuccess: Gitspace 删除成功
+repositoryAndBranch: 仓库与分支
+importInto: 将仓库导入到 Gitfox
+status: 状态
+getStarted: 通过以下方式开始使用 Gitspaces
+createImport: 创建或导入仓库
+sshSelect:
+  30days: 30 天
+  90days: 90 天
+  180days: 180 天
+  noexpiration: 永不过期
+  deleteToken: 删除 SSH 密钥 '{{name}}'
+homePage:
+  start: 开始
+  noSetupRequired: 无需设置
+  noteOne: 专用云开发环境，使用您喜欢的编辑器
+  noteTwo: 获取始终一致的开发环境，提高生产力并增强协作。
+  getStartedNow: 立即开始
+  learnMoreAboutGitspaces: 了解更多关于 Gitspaces 的信息
+listing:
+  online: 在线
+  offline: 停止
+  error: 错误
+  starting: 正在启动
+  stopping: 正在停止
+  ownerAndCreated: 所有者与创建时间
+create:
+  repositoryDetails: 仓库详情
+  gitnessRepositories: Gitfox 仓库
+  thirdPartyGitRepositories: 其他公共 Git 仓库
+  branchPlaceholder: 输入分支名称
+  selectBranchPlaceholder: 选择分支
+  searchRepositoryPlaceholder: 搜索仓库
+  searchBranchPlaceholder: 搜索分支
+  repoNotFound: '创建一个仓库 <strong>{{repo}}</strong>'
+  gitspaceCreateSuccess: Gitspace 创建成功
+  gitspaceCreateFailed: Gitspace 创建失败
+  subtext: 开始编码，无需设置。专用云开发环境，使用您喜欢的编辑器。
+  importWarning:
+    目前我们仅支持第三方公共仓库。要使用私有 Git 仓库，请将仓库导入到 Gitfox。
+  unsaved:
+    title: 未保存的更改
+    message: '您有未保存的更改，切换时所有未保存的更改将丢失'
+details:
+  actions: 更多操作
+  openEditor: 打开 VS Code 编辑器
+  openBrowser: 在浏览器中打开 VS Code
+  goToDashboard: 转到仪表板
+  startGitspace: 启动 Gitspace
+  stopProvising: 停止提供
+  noData: Gitspace 无数据
+  gitspaceActivity: Gitspace 活动
+  provisioningGitspace: 正在配置 Gitspace...
+  gitspaceStopped: Gitspace 已停止
+  gitspaceRunning: Gitspace 正在运行
+  stopGitspace: 停止 Gitspace
+  fetchingGitspace: 正在获取 Gitspace 详情
+  fetchingLogs: 正在获取 Gitspace 日志
+  logsFailed: Gitspace 日志 API 失败
+  noLogsFound: 未找到 Gitspace 日志
+  wrongIdentifier: 无效的 Gitspace ID 或项目参数
+  fetchingDetails: 正在获取 Gitspace 事件...
+  containerLogs: 容器日志
+  containerLogsSubText: 显示容器内部活动的日志
+repository:
+  repo: 仓库
+  selectRepository: 选择仓库
+  pasteRepo: 粘贴 Git URL 以创建 Gitspace
+  pasterRepoSubtext: 您可以使用任何公共 Git 仓库来创建 Gitspace
+  privateRepoWarning: 仓库 URL 为私有仓库
+  publicRepo: 您可以使用任何公共 Git 仓库来创建 Gitspace
+  continueWith: 继续使用
+  repositoryURL: 仓库 URL
+ide:
+  browser: VS Code 浏览器
+  desktop: VS Code 桌面版
+  title: IDE
+  selectIDE: 选择 IDE
+  vsCode: VS Code
+  openVSCode: 在 VS Code 桌面版中打开
+  openBrowser: 在浏览器中打开

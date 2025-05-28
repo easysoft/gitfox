@@ -1,0 +1,33 @@
+.prNumber {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-canvas);
+  padding-left: var(--spacing-small);
+}
+
+.prTitle {
+  .btn > span {
+    background: var(--primary-5);
+    border: 1px solid var(--primary-7);
+    border-radius: 4px;
+  }
+
+  .titleText {
+    --typography-size: 13px !important;
+  }
+
+  a,
+  a:hover,
+  a:visited,
+  a:active {
+    color: var(--color-canvas);
+    opacity: 0.7;
+  }
+  a:hover {
+    opacity: 1;
+  }
+}
+
+#bp3-tab-panel_prTabs_commits {
+  margin-top: 0;
+}

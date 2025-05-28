@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package client
 
@@ -14,9 +24,9 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/harness/gitness/internal/api/controller/user"
-	"github.com/harness/gitness/types"
-	"github.com/harness/gitness/version"
+	"github.com/easysoft/gitfox/app/api/controller/user"
+	"github.com/easysoft/gitfox/pkg/util/common"
+	"github.com/easysoft/gitfox/types"
 
 	"github.com/rs/zerolog/log"
 )
@@ -59,27 +69,18 @@ func (c *HTTPClient) SetDebug(debug bool) {
 }
 
 // Login authenticates the user and returns a JWT token.
-func (c *HTTPClient) Login(ctx context.Context, username, password string) (*types.TokenResponse, error) {
-	form := &url.Values{}
-	form.Add("username", username)
-	form.Add("password", password)
+func (c *HTTPClient) Login(ctx context.Context, input *user.LoginInput) (*types.TokenResponse, error) {
 	out := new(types.TokenResponse)
 	uri := fmt.Sprintf("%s/api/v1/login", c.base)
-	err := c.post(ctx, uri, true, form, out)
+	err := c.post(ctx, uri, true, input, out)
 	return out, err
 }
 
 // Register registers a new  user and returns a JWT token.
-func (c *HTTPClient) Register(ctx context.Context,
-	username, displayName, email, password string) (*types.TokenResponse, error) {
-	form := &url.Values{}
-	form.Add("username", username)
-	form.Add("displayname", displayName)
-	form.Add("email", email)
-	form.Add("password", password)
+func (c *HTTPClient) Register(ctx context.Context, input *user.RegisterInput) (*types.TokenResponse, error) {
 	out := new(types.TokenResponse)
 	uri := fmt.Sprintf("%s/api/v1/register", c.base)
-	err := c.post(ctx, uri, true, form, out)
+	err := c.post(ctx, uri, true, input, out)
 	return out, err
 }
 
@@ -201,12 +202,7 @@ func (c *HTTPClient) stream(ctx context.Context, rawurl, method string, noToken 
 	var buf io.ReadWriter
 	if in != nil {
 		buf = &bytes.Buffer{}
-		// if posting form data, encode the form values.
-		if form, ok := in.(*url.Values); ok {
-			if _, err = io.WriteString(buf, form.Encode()); err != nil {
-				log.Err(err).Msg("in stream method")
-			}
-		} else if err = json.NewEncoder(buf).Encode(in); err != nil {
+		if err = json.NewEncoder(buf).Encode(in); err != nil {
 			return nil, err
 		}
 	}
@@ -228,7 +224,7 @@ func (c *HTTPClient) stream(ctx context.Context, rawurl, method string, noToken 
 
 	// include the client version information in the
 	// http accept header for debugging purposes.
-	req.Header.Set("Accept", "application/json;version="+version.Version.String())
+	req.Header.Set("Accept", "application/json;version="+common.GetVersionWithHash())
 
 	// send the http request.
 	resp, err := c.client.Do(req)

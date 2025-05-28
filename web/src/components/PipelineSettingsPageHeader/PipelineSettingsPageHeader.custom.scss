@@ -1,0 +1,49 @@
+.pageHeader {
+  --typography-color: var(--color-canvas) !important;
+  height: 48px !important;
+  background-color: var(--color-primary-500) !important;
+  color: var(--color-canvas) !important;
+  padding: 0 var(--spacing-xlarge) !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  position: relative !important;
+  --grey-500: var(--color-canvas) !important;
+  margin-bottom: 42px !important;
+
+  :global {
+    h2 {
+      margin-left: 10px !important;
+      font-weight: bold !important;
+    }
+  }
+}
+
+.breadcrumb {
+  margin-bottom: 0 !important;
+
+  a,
+  a:hover,
+  a:visited {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-canvas);
+  }
+}
+
+.tabs {
+  height: 42px;
+  position: absolute;
+  border-bottom: 1px solid var(--grey-200) !important;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding-left: var(--spacing-xlarge) !important;
+  background-color: var(--color-canvas) !important;
+
+  .tab {
+    display: flex;
+    align-items: center;
+    justify-self: center;
+  }
+}

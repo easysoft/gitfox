@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package check
 
@@ -8,15 +18,18 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/easysoft/gitfox/types"
 )
 
 const (
 	minDisplayNameLength = 1
 	maxDisplayNameLength = 256
 
-	minUIDLength = 1
-	maxUIDLength = 100
-	uidRegex     = "^[a-zA-Z_][a-zA-Z0-9-_.]*$"
+	minIdentifierLength              = 1
+	MaxIdentifierLength              = 100
+	identifierRegex                  = "^[a-zA-Z0-9-_.]*$"
+	illegalRepoSpaceIdentifierSuffix = ".git"
 
 	minEmailLength = 1
 	maxEmailLength = 250
@@ -25,9 +38,9 @@ const (
 )
 
 var (
-	// illegalRootSpaceUIDs is the list of space UIDs we are blocking for root spaces
+	// illegalRootSpaceIdentifiers is the list of space identifier we are blocking for root spaces
 	// as they might cause issues with routing.
-	illegalRootSpaceUIDs = []string{"api", "git"}
+	illegalRootSpaceIdentifiers = []string{"api", "git"}
 )
 
 var (
@@ -39,12 +52,15 @@ var (
 		fmt.Sprintf("Description can be at most %d in length.", maxDescriptionLength),
 	}
 
-	ErrUIDLength = &ValidationError{
-		fmt.Sprintf("UID has to be between %d and %d in length.",
-			minUIDLength, maxUIDLength),
+	ErrIdentifierLength = &ValidationError{
+		fmt.Sprintf(
+			"Identifier has to be between %d and %d in length.",
+			minIdentifierLength,
+			MaxIdentifierLength,
+		),
 	}
-	ErrUIDRegex = &ValidationError{
-		"UID has to start with a letter (or _) and only contain the following characters [a-zA-Z0-9-_.].",
+	ErrIdentifierRegex = &ValidationError{
+		"Identifier can only contain the following characters [a-zA-Z0-9-_.].",
 	}
 
 	ErrEmailLen = &ValidationError{
@@ -53,8 +69,18 @@ var (
 
 	ErrInvalidCharacters = &ValidationError{"Input contains invalid characters."}
 
-	ErrIllegalRootSpaceUID = &ValidationError{
-		fmt.Sprintf("The following names are not allowed for a root space: %v", illegalRootSpaceUIDs),
+	ErrIllegalRootSpaceIdentifier = &ValidationError{
+		fmt.Sprintf("The following identifiers are not allowed for a root space: %v", illegalRootSpaceIdentifiers),
+	}
+
+	ErrIllegalRootSpaceIdentifierNumber = &ValidationError{"The identifier of a root space can't be numeric."}
+
+	ErrIllegalRepoSpaceIdentifierSuffix = &ValidationError{
+		fmt.Sprintf("Space and repository identifiers cannot end with %q.", illegalRepoSpaceIdentifierSuffix),
+	}
+
+	ErrIllegalPrincipalUID = &ValidationError{
+		fmt.Sprintf("Principal UID is not allowed to be %q.", types.AnonymousPrincipalUID),
 	}
 )
 
@@ -89,15 +115,31 @@ func ForControlCharacters(s string) error {
 	return nil
 }
 
-// UID checks the provided uid and returns an error if it isn't valid.
-func UID(uid string) error {
-	l := len(uid)
-	if l < minUIDLength || l > maxUIDLength {
-		return ErrUIDLength
+// Identifier checks the provided identifier and returns an error if it isn't valid.
+func Identifier(identifier string) error {
+	l := len(identifier)
+	if l < minIdentifierLength || l > MaxIdentifierLength {
+		return ErrIdentifierLength
 	}
 
-	if ok, _ := regexp.Match(uidRegex, []byte(uid)); !ok {
-		return ErrUIDRegex
+	if ok, _ := regexp.Match(identifierRegex, []byte(identifier)); !ok {
+		return ErrIdentifierRegex
+	}
+
+	return nil
+}
+
+type RepoIdentifier func(identifier string) error
+
+// RepoIdentifierDefault performs the default Identifier check and also blocks illegal repo identifiers.
+func RepoIdentifierDefault(identifier string) error {
+	if err := Identifier(identifier); err != nil {
+		return err
+	}
+
+	identifierLower := strings.ToLower(identifier)
+	if strings.HasSuffix(identifierLower, illegalRepoSpaceIdentifierSuffix) {
+		return ErrIllegalRepoSpaceIdentifierSuffix
 	}
 
 	return nil
@@ -109,25 +151,42 @@ type PrincipalUID func(uid string) error
 
 // PrincipalUIDDefault performs the default Principal UID check.
 func PrincipalUIDDefault(uid string) error {
-	return UID(uid)
-}
-
-// PathUID is an abstraction of a validation method that returns true
-// iff the UID is valid to be used in a resource path for repo/space.
-// NOTE: Enables support for different path formats.
-type PathUID func(uid string, isRoot bool) error
-
-// PathUIDDefault performs the default UID check and also blocks illegal root space UIDs.
-func PathUIDDefault(uid string, isRoot bool) error {
-	if err := UID(uid); err != nil {
+	if err := Identifier(uid); err != nil {
 		return err
 	}
 
+	if strings.EqualFold(uid, types.AnonymousPrincipalUID) {
+		return ErrIllegalPrincipalUID
+	}
+
+	return nil
+}
+
+// SpaceIdentifier is an abstraction of a validation method that returns true
+// iff the Identifier is valid to be used in a resource path for repo/space.
+// NOTE: Enables support for different path formats.
+type SpaceIdentifier func(identifier string, isRoot bool) error
+
+// SpaceIdentifierDefault performs the default Identifier check and also blocks illegal root space Identifiers.
+func SpaceIdentifierDefault(identifier string, isRoot bool) error {
+	if err := Identifier(identifier); err != nil {
+		return err
+	}
+
+	identifierLower := strings.ToLower(identifier)
+	if strings.HasSuffix(identifierLower, illegalRepoSpaceIdentifierSuffix) {
+		return ErrIllegalRepoSpaceIdentifierSuffix
+	}
+
 	if isRoot {
-		uidLower := strings.ToLower(uid)
-		for _, p := range illegalRootSpaceUIDs {
-			if p == uidLower {
-				return ErrIllegalRootSpaceUID
+		// root space identifier can't be numeric as it would cause conflicts of space path and space id.
+		if strings.TrimLeftFunc(identifier, func(r rune) bool { return r >= '0' && r <= '9' }) == "" {
+			return ErrIllegalRootSpaceIdentifierNumber
+		}
+
+		for _, p := range illegalRootSpaceIdentifiers {
+			if p == identifierLower {
+				return ErrIllegalRootSpaceIdentifier
 			}
 		}
 	}

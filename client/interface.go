@@ -1,23 +1,33 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package client
 
 import (
 	"context"
 
-	"github.com/harness/gitness/internal/api/controller/user"
-	"github.com/harness/gitness/types"
+	"github.com/easysoft/gitfox/app/api/controller/user"
+	"github.com/easysoft/gitfox/types"
 )
 
 // Client to access the remote APIs.
 type Client interface {
 	// Login authenticates the user and returns a JWT token.
-	Login(ctx context.Context, username, password string) (*types.TokenResponse, error)
+	Login(ctx context.Context, input *user.LoginInput) (*types.TokenResponse, error)
 
 	// Register registers a new  user and returns a JWT token.
-	Register(ctx context.Context, username, name, email, password string) (*types.TokenResponse, error)
+	Register(ctx context.Context, input *user.RegisterInput) (*types.TokenResponse, error)
 
 	// Self returns the currently authenticated user.
 	Self(ctx context.Context) (*types.User, error)

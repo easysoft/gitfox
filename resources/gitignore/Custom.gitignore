@@ -1,0 +1,34 @@
+build/
+_build/
+/.build/
+.history/
+.chat/
+.task/
+_output/
+
+# Executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+
+# Linker output
+*.exp
+
+# Log file
+*.log
+
+# Package Files #
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+*.tar.bz2
+*.tar.xz
+
+.DS_Store

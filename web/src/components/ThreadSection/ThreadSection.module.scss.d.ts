@@ -1,11 +1,25 @@
+/*
+ * Copyright 2023 Harness, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 /* eslint-disable */
-// this is an auto-generated file
-declare const styles: {
-  readonly thread: string
-  readonly content: string
-  readonly hideGutter: string
-  readonly titleContent: string
-  readonly inCommentBox: string
-  readonly threadLessSpace: string
-}
-export default styles
+// This is an auto-generated file
+export declare const content: string
+export declare const hideGutter: string
+export declare const hideTitleGutter: string
+export declare const inCommentBox: string
+export declare const thread: string
+export declare const threadLessSpace: string
+export declare const titleContent: string

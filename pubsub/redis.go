@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package pubsub
 
@@ -25,11 +35,11 @@ type Redis struct {
 // NewRedis create an instance of redis PubSub implementation.
 func NewRedis(client redis.UniversalClient, options ...Option) *Redis {
 	config := Config{
-		app:            "app",
-		namespace:      "default",
-		healthInterval: 3 * time.Second,
-		sendTimeout:    60,
-		channelSize:    100,
+		App:            "app",
+		Namespace:      "default",
+		HealthInterval: 3 * time.Second,
+		SendTimeout:    60,
+		ChannelSize:    100,
 	}
 
 	for _, f := range options {
@@ -54,11 +64,11 @@ func (r *Redis) Subscribe(
 
 	config := SubscribeConfig{
 		topics:         make([]string, 0, 8),
-		app:            r.config.app,
-		namespace:      r.config.namespace,
-		healthInterval: r.config.healthInterval,
-		sendTimeout:    r.config.sendTimeout,
-		channelSize:    r.config.channelSize,
+		app:            r.config.App,
+		namespace:      r.config.Namespace,
+		healthInterval: r.config.HealthInterval,
+		sendTimeout:    r.config.SendTimeout,
+		channelSize:    r.config.ChannelSize,
 	}
 
 	for _, f := range options {
@@ -88,8 +98,8 @@ func (r *Redis) Subscribe(
 // Publish event topic to message broker with payload.
 func (r *Redis) Publish(ctx context.Context, topic string, payload []byte, opts ...PublishOption) error {
 	pubConfig := PublishConfig{
-		app:       r.config.app,
-		namespace: r.config.namespace,
+		app:       r.config.App,
+		namespace: r.config.Namespace,
 	}
 	for _, f := range opts {
 		f.Apply(&pubConfig)
@@ -105,7 +115,7 @@ func (r *Redis) Publish(ctx context.Context, topic string, payload []byte, opts 
 	return nil
 }
 
-func (r *Redis) Close(ctx context.Context) error {
+func (r *Redis) Close(_ context.Context) error {
 	for _, subscriber := range r.registry {
 		err := subscriber.Close()
 		if err != nil {
@@ -132,7 +142,11 @@ func (s *redisSubscriber) start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case msg := <-ch:
+		case msg, ok := <-ch:
+			if !ok {
+				log.Ctx(ctx).Debug().Msg("redis channel was closed")
+				return
+			}
 			if err := s.handler([]byte(msg.Payload)); err != nil {
 				log.Ctx(ctx).Err(err).Msg("received an error from handler function")
 			}

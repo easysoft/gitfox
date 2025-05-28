@@ -1,0 +1,71 @@
+.PageHeader--container {
+  border-bottom-color: var(--color-primary-500) !important;
+}
+.PageHeader--container.PageHeader--standard {
+  height: 48px;
+  background-color: var(--color-primary-500) !important;
+  color: var(--color-canvas) !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  align-items: stretch;
+  --intent-color: var(--color-canvas);
+}
+.PageHeader--container.PageHeader--standard .bp3-button,
+.PageHeader--container.PageHeader--standard .Button--variation-primary {
+  --background-color-hover: var(--primary-8) !important;
+  --background-color: var(--primary-6) !important;
+}
+.PageHeader--container.PageHeader--standard .bp3-button[aria-label="取消"],
+.PageHeader--container.PageHeader--standard .bp3-button[aria-label="cancel"] {
+  --background-color-hover: var(--primary-6) !important;
+  --background-color: var(--primary5) !important;
+}
+
+.PageHeader--container.PageHeader--standard :not(.StyledProps--main) .StyledProps--main {
+  color: var(--color-canvas) !important;
+}
+.PageHeader--container.PageHeader--standard>[class^="Layout--vertical"],
+.PageHeader--container.PageHeader--standard>[class*=" Layout--vertical"] {
+  flex-direction: row;
+  gap: 4px;
+  color: var(--color-canvas) !important;
+  align-items: center;
+}
+.PageHeader--container.PageHeader--standard>[class^="Layout--vertical"]>h2,
+.PageHeader--container.PageHeader--standard>[class*=" Layout--vertical"]>h2 {
+  font-size: 14px !important;
+  font-weight: bold;
+  font-weight: normal;
+  color: var(--color-canvas) !important;
+}
+.PageHeader--container .PageHeader--breadcrumbsDiv,
+.PageHeader--container [class^="PageHeader--breadcrumbsDiv"],
+.PageHeader--container [class*=" PageHeader--breadcrumbsDiv"] {
+  margin-bottom: 0;
+}
+
+:not(.Layout--vertical).Layout--layout-spacing-medium,
+:not(.Layout--horizontal).Layout--layout-spacing-medium {
+  --layout-spacing: var(--spacing-4);
+}
+:not(.StyledProps--main) .StyledProps--main[class*='font-variation'] {
+  color: var(--typography-color, var(--color-fore));
+}
+:not(.StyledProps--main) .StyledProps--main.StyledProps--font-h5 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-fore);
+}
+:not(.StyledProps--main) .StyledProps--main.StyledProps--font-variation-tiny,
+:not(.StyledProps--main) .StyledProps--main.StyledProps--font-variation-tiny-semi {
+  --typography-size: 12px;
+}
+:not(.StyledProps--main) .StyledProps--main.StyledProps--padding-large {
+  padding: var(--spacing-medium) var(--spacing-large);
+}
+:not(.StyledProps--main) .StyledProps--main.StyledProps--padding-xlarge {
+  padding: var(--spacing-medium) var(--spacing-xlarge);
+}
+:not(.StyledProps--main) .StyledProps--main.StyledProps--font-variation-table-headers {
+  --typography-weight: normal;
+}

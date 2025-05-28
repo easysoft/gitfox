@@ -1,0 +1,13 @@
+-- Copyright (c) 2023-2024 北京渠成软件有限公司(Beijing Qucheng Software Co., Ltd. www.qucheng.com) All rights reserved.
+-- Use of this source code is covered by the following dual licenses:
+-- (1) Z PUBLIC LICENSE 1.2 (ZPL 1.2)
+-- (2) Affero General Public License 3.0 (AGPL 3.0)
+-- license that can be found in the LICENSE file.
+
+ALTER TABLE repositories DROP COLUMN repo_deleted;
+
+DROP INDEX repositories_parent_id_uid;
+DROP INDEX repositories_deleted;
+
+CREATE UNIQUE INDEX repositories_parent_id_uid
+ON repositories(repo_parent_id, LOWER(repo_uid));

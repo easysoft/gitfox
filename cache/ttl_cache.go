@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package cache
 
@@ -9,6 +19,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/exp/constraints"
@@ -18,14 +29,14 @@ import (
 // The TTLCache has no maximum capacity, so the idea is to store objects for short period.
 // The goal of the TTLCache is to reduce database load.
 // Every instance of TTLCache has a background routine that purges stale items.
-type TTLCache[K constraints.Ordered, V Identifiable[K]] struct {
+type TTLCache[K comparable, V any] struct {
 	mx        sync.RWMutex
-	cache     map[K]cacheEntry[K, V]
+	cache     map[K]cacheEntry[V]
 	purgeStop chan struct{}
 	getter    Getter[K, V]
 	maxAge    time.Duration
-	countHit  int64
-	countMiss int64
+	countHit  atomic.Int64
+	countMiss atomic.Int64
 }
 
 // ExtendedTTLCache is an extended version of the TTLCache.
@@ -34,16 +45,16 @@ type ExtendedTTLCache[K constraints.Ordered, V Identifiable[K]] struct {
 	getter ExtendedGetter[K, V]
 }
 
-type cacheEntry[K constraints.Ordered, V Identifiable[K]] struct {
+type cacheEntry[V any] struct {
 	added time.Time
 	data  V
 }
 
 // New creates a new TTLCache instance and a background routine
 // that periodically purges stale items.
-func New[K constraints.Ordered, V Identifiable[K]](getter Getter[K, V], maxAge time.Duration) *TTLCache[K, V] {
+func New[K comparable, V any](getter Getter[K, V], maxAge time.Duration) *TTLCache[K, V] {
 	c := &TTLCache[K, V]{
-		cache:     make(map[K]cacheEntry[K, V]),
+		cache:     make(map[K]cacheEntry[V]),
 		purgeStop: make(chan struct{}),
 		getter:    getter,
 		maxAge:    maxAge,
@@ -56,11 +67,13 @@ func New[K constraints.Ordered, V Identifiable[K]](getter Getter[K, V], maxAge t
 
 // NewExtended creates a new TTLCacheExtended instance and a background routine
 // that periodically purges stale items.
-func NewExtended[K constraints.Ordered, V Identifiable[K]](getter ExtendedGetter[K, V],
-	maxAge time.Duration) *ExtendedTTLCache[K, V] {
+func NewExtended[K constraints.Ordered, V Identifiable[K]](
+	getter ExtendedGetter[K, V],
+	maxAge time.Duration,
+) *ExtendedTTLCache[K, V] {
 	c := &ExtendedTTLCache[K, V]{
 		TTLCache: TTLCache[K, V]{
-			cache:     make(map[K]cacheEntry[K, V]),
+			cache:     make(map[K]cacheEntry[V]),
 			purgeStop: make(chan struct{}),
 			getter:    getter,
 			maxAge:    maxAge,
@@ -101,7 +114,7 @@ func (c *TTLCache[K, V]) Stop() {
 
 // Stats returns number of cache hits and misses and can be used to monitor the cache efficiency.
 func (c *TTLCache[K, V]) Stats() (int64, int64) {
-	return c.countHit, c.countMiss
+	return c.countHit.Load(), c.countMiss.Load()
 }
 
 func (c *TTLCache[K, V]) fetch(key K, now time.Time) (V, bool) {
@@ -110,14 +123,14 @@ func (c *TTLCache[K, V]) fetch(key K, now time.Time) (V, bool) {
 
 	item, ok := c.cache[key]
 	if !ok || now.Sub(item.added) > c.maxAge {
-		c.countMiss++
+		c.countMiss.Add(1)
 		var nothing V
 		return nothing, false
 	}
 
-	c.countHit++
+	c.countHit.Add(1)
 
-	// we deliberately don'V update the `item.added` timestamp for `now` because
+	// we deliberately don't update the `item.added` timestamp for `now` because
 	// we want to cache the items only for a short period.
 
 	return item.data, true
@@ -128,7 +141,7 @@ func (c *ExtendedTTLCache[K, V]) Map(ctx context.Context, keys []K) (map[K]V, er
 	m := make(map[K]V)
 	now := time.Now()
 
-	keys = deduplicate(keys)
+	keys = Deduplicate(keys)
 
 	// Check what's already available in the cache.
 
@@ -165,7 +178,7 @@ func (c *ExtendedTTLCache[K, V]) Map(ctx context.Context, keys []K) (map[K]V, er
 	for _, item := range items {
 		id := item.Identifier()
 		m[id] = item
-		c.cache[id] = cacheEntry[K, V]{
+		c.cache[id] = cacheEntry[V]{
 			added: now,
 			data:  item,
 		}
@@ -190,7 +203,7 @@ func (c *TTLCache[K, V]) Get(ctx context.Context, key K) (V, error) {
 	}
 
 	c.mx.Lock()
-	c.cache[key] = cacheEntry[K, V]{
+	c.cache[key] = cacheEntry[V]{
 		added: now,
 		data:  item,
 	}
@@ -199,8 +212,8 @@ func (c *TTLCache[K, V]) Get(ctx context.Context, key K) (V, error) {
 	return item, nil
 }
 
-// deduplicate is a utility function that removes duplicates from slice.
-func deduplicate[V constraints.Ordered](slice []V) []V {
+// Deduplicate is a utility function that removes duplicates from slice.
+func Deduplicate[V constraints.Ordered](slice []V) []V {
 	if len(slice) <= 1 {
 		return slice
 	}

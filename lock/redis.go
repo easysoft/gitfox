@@ -1,6 +1,16 @@
-// Copyright 2022 Harness Inc. All rights reserved.
-// Use of this source code is governed by the Polyform Free Trial License
-// that can be found in the LICENSE.md file for this repository.
+// Copyright 2023 Harness, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
 
 package lock
 
@@ -41,22 +51,22 @@ func (r *Redis) NewMutex(key string, options ...Option) (Mutex, error) {
 	// convert to redis helper functions
 	args := make([]redsync.Option, 0, 8)
 	args = append(args,
-		redsync.WithExpiry(config.expiry),
-		redsync.WithTimeoutFactor(config.timeoutFactor),
-		redsync.WithTries(config.tries),
-		redsync.WithRetryDelay(config.retryDelay),
-		redsync.WithDriftFactor(config.driftFactor),
+		redsync.WithExpiry(config.Expiry),
+		redsync.WithTimeoutFactor(config.TimeoutFactor),
+		redsync.WithTries(config.Tries),
+		redsync.WithRetryDelay(config.RetryDelay),
+		redsync.WithDriftFactor(config.DriftFactor),
 	)
 
-	if config.delayFunc != nil {
-		args = append(args, redsync.WithRetryDelayFunc(redsync.DelayFunc(config.delayFunc)))
+	if config.DelayFunc != nil {
+		args = append(args, redsync.WithRetryDelayFunc(redsync.DelayFunc(config.DelayFunc)))
 	}
 
-	if config.genValueFunc != nil {
-		args = append(args, redsync.WithGenValueFunc(config.genValueFunc))
+	if config.GenValueFunc != nil {
+		args = append(args, redsync.WithGenValueFunc(config.GenValueFunc))
 	}
 
-	uniqKey := formatKey(config.app, config.namespace, key)
+	uniqKey := formatKey(config.App, config.Namespace, key)
 	mutex := r.rs.NewMutex(uniqKey, args...)
 
 	return &RedisMutex{
@@ -92,14 +102,14 @@ func (l *RedisMutex) Unlock(ctx context.Context) error {
 }
 
 func translateRedisErr(err error, key string) error {
-	var kind KindError
+	var kind ErrorKind
 	switch {
 	case errors.Is(err, redsync.ErrFailed):
-		kind = CannotLock
+		kind = ErrorKindCannotLock
 	case errors.Is(err, redsync.ErrExtendFailed), errors.Is(err, &redsync.RedisError{}):
-		kind = ProviderError
+		kind = ErrorKindProviderError
 	case errors.Is(err, &redsync.ErrTaken{}), errors.Is(err, &redsync.ErrNodeTaken{}):
-		kind = LockHeld
+		kind = ErrorKindLockHeld
 	}
 	return NewError(kind, key, err)
 }
