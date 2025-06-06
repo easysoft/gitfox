@@ -12,7 +12,7 @@ services:
       - MYSQL_DATABASE=gitfox
 
   gitfox:
-    image: hub.zentao.net/app/gitfox:dev
+    image: hub.zentao.net/app/gitfox-oss
     container_name: gitfox
     pull_policy: always
     ports:
