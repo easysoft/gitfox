@@ -56,7 +56,7 @@ spec:
                 #GOMODCACHE: /mnt/go_cache/mod
                 #GOCACHE: /mnt/go_cache/build
               container:
-                image: hub.zentao.net/ci/golang:1.22.1-alpine
+                image: hub.zentao.net/ci/golang:1.23.8-alpine
               #mount:
               #  - name: cache
               #    path: /mnt/go_cache
