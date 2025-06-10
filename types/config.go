@@ -149,7 +149,7 @@ type Config struct {
 	}
 
 	SSH struct {
-		Enable bool   `envconfig:"GITFOX_SSH_ENABLE" default:"false"`
+		Enable bool   `envconfig:"GITFOX_SSH_ENABLE" default:"true"`
 		Host   string `envconfig:"GITFOX_SSH_HOST"`
 		Port   int    `envconfig:"GITFOX_SSH_PORT" default:"3022"`
 		// DefaultUser holds value for generating urls {user}@host:path and force check

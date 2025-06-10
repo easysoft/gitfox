@@ -82,7 +82,6 @@ ENV GITFOX_DOCKER_HOST unix:///var/run/docker.sock
 ENV GITFOX_DOCKER_API_VERSION 1.40
 ENV GITFOX_SSH_ENABLE=true
 ENV GITFOX_SSH_HOST_KEYS_DIR=/data/ssh
-ENV GITFOX_GITSPACE_ENABLE=false
 
 COPY --from=build /app/bin/gitfox_linux_amd64 /app/gitfox
 

@@ -21,14 +21,14 @@ CREATE TABLE ai_configs (
 );
 
 CREATE TABLE ai_requests (
-    ai_id INT PRIMARY KEY AUTO_INCREMENT,
-    ai_created BIGINT NOT NULL,
-    ai_updated BIGINT NOT NULL,
-    ai_repo_id INT NOT NULL,
-    ai_pullreq_id INT NOT NULL,
-    ai_config_id INT NOT NULL,
-    ai_token INT NOT NULL,
-    ai_duration INT NOT NULL,
+    ai_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ai_created INTEGER NOT NULL,
+    ai_updated INTEGER NOT NULL,
+    ai_repo_id INTEGER NOT NULL,
+    ai_pullreq_id INTEGER NOT NULL,
+    ai_config_id INTEGER NOT NULL,
+    ai_token INTEGER NOT NULL,
+    ai_duration INTEGER NOT NULL,
     ai_status VARCHAR(255) NOT NULL,
     ai_error TEXT,
     ai_client_mode BOOLEAN DEFAULT FALSE,

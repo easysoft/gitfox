@@ -1,28 +1,6 @@
-### Pull CA Certs
-FROM hub.zentao.net/ci/alpine:3.19 AS cert-image
-
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories && apk --update add ca-certificates
-
-### ADD data
-FROM hub.zentao.net/ci/alpine:3.19 AS alpine-amd64
+FROM hub.zentao.net/ci/debian AS debian-amd64
 ENV OS_ARCH=amd64
-
-FROM hub.zentao.net/ci/alpine:3.19 AS alpine-arm64
-ENV OS_ARCH=arm64
-
-FROM alpine-${TARGETARCH}${TARGETVARIANT}
-
-ARG TZ="Asia/Shanghai"
-
-ENV TZ ${TZ}
-
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-    && apk --no-cache add git bash musl tzdata curl \
-    && ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime \
-    && echo ${TZ} > /etc/timezone \
-    && date \
-    # && apk del --no-cache tzdata \
-    && rm -rf /var/cache/apk/*
+FROM debian-${TARGETARCH}${TARGETVARIANT}
 
 # setup app dir and its content
 WORKDIR /app
@@ -46,15 +24,12 @@ ENV GITFOX_DOCKER_HOST unix:///var/run/docker.sock
 ENV GITFOX_DOCKER_API_VERSION 1.40
 ENV GITFOX_SSH_ENABLE=true
 ENV GITFOX_SSH_HOST_KEYS_DIR=/data/ssh
-ENV GITFOX_GITSPACE_ENABLE=false
 
 ADD bin/gitfox_linux_${OS_ARCH} /app/gitfox
 
 ADD hack/ci-plugin/plugins.zip /app/plugins.zip
 
-COPY --from=cert-image /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-
 EXPOSE 3000
-EXPOSE 22
+EXPOSE 3022
 
 CMD [ "/app/gitfox", "server" ]

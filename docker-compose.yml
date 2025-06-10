@@ -1,4 +1,3 @@
-version: '2'
 services:
   mysql:
     image: hub.zentao.net/app/mysql:8.0.33-debian-11-r11
@@ -12,26 +11,35 @@ services:
       - MYSQL_DATABASE=gitfox
 
   gitfox:
-    image: hub.zentao.net/app/gitfox-oss
+    image: hub.zentao.net/app/gitfox-oss:oss
     container_name: gitfox
     pull_policy: always
     ports:
       - '3000:3000'
+      - '3322:22'
     volumes:
       - 'gitfox_data:/data'
-      #- '/var/run/docker.sock:/var/run/docker.sock'
+      - '/var/run/docker.sock:/var/run/docker.sock'
     depends_on:
       - mysql
     environment:
       - GITFOX_DATABASE_DRIVER=mysql
-      - GITFOX_DATABASE_HOST=mysql
-      - GITFOX_DATABASE_PORT=3306
-      - GITFOX_DATABASE_USERNAME=root
-      - GITFOX_DATABASE_PASSWORD=pass4GitFox
-      - GITFOX_DATABASE_DBNAME=gitfox
-      - GITFOX_DATABASE_EXTRA_OPTIONS=""
-      - GITFOX_PRINCIPAL_ADMIN_EMAIL=admin@gitfox.io
+      - GITFOX_DATABASE_DATASOURCE=root:pass4GitFox@tcp(mysql:3306)/gitfox
+      - GITFOX_PRINCIPAL_ADMIN_EMAIL=admin@gitness.io
       - GITFOX_PRINCIPAL_ADMIN_PASSWORD=changeit
+      - GITFOX_DEBUG=true
+      - GITFOX_TRACE=true
+      - GITFOX_GIT_TRACE=true
+      - GITFOX_DATABASE_TRACE=true
+      - GITFOX_WEBHOOK_ALLOW_LOOPBACK=true
+      - GITFOX_WEBHOOK_ALLOW_PRIVATE_NETWORK=true
+      - GITFOX_METRIC_ENABLED=true
+      - GITFOX_URL_BASE=http://10.0.0.51:3000
+      - GITFOX_URL_GIT=http://10.0.0.51:3000/git
+      - GITFOX_HTTP_FRAME_DENY=false
+      - GITFOX_SSH_ENABLE=true
+      - GITFOX_URL_GIT_SSH=ssh://10.0.0.51:3322
+      - GITFOX_SSH_PORT=22
 
 volumes:
   db:

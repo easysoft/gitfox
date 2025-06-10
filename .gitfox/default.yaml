@@ -56,7 +56,7 @@ spec:
                 #GOMODCACHE: /mnt/go_cache/mod
                 #GOCACHE: /mnt/go_cache/build
               container:
-                image: hub.zentao.net/ci/golang:1.23.8-alpine
+                image: hub.zentao.net/ci/god
               #mount:
               #  - name: cache
               #    path: /mnt/go_cache
@@ -66,6 +66,16 @@ spec:
               - task cross-build
               - task download-gitfox-plugin
               - ls -l bin/
+          - name: Upload
+            type: run
+            spec:
+              envs:
+                AZURE_SAS_TOKEN: ${{ secrets.get("azure_sas_token") }}
+                AZURE_COS_URL:  ${{ secrets.get("azure_cos_url") }}
+              container:
+                image: hub.zentao.net/ci/azcopy:10.25.1
+              script:
+                - azcopy cp --recursive "bin/*" "https://$AZURE_COS_URL/download/gitfox/?$AZURE_SAS_TOKEN"
           - name: 构建镜像
             type: run
             spec:
