@@ -137,7 +137,7 @@ export const NewTriggerModalButton: React.FC<NewTriggerModalButtonProps> = ({
                           <Checkbox
                             key={action.name}
                             name="actions"
-                            label={action.name}
+                            label={getString(action.name)}
                             value={action.value}
                             checked={formik.values.actions.includes(action.value as EnumTriggerAction)}
                             onChange={event => {
